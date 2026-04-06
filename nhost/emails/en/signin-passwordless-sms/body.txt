@@ -1,0 +1,5 @@
+TastyPlates: sign in with this link ${link}
+
+Your code: ${ticket}
+
+If you did not request this, ignore this message.
