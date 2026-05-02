@@ -1,0 +1,7 @@
+- "!include tables/restaurants.yaml"
+- "!include tables/restaurant_reviews.yaml"
+- "!include tables/restaurant_users.yaml"
+- "!include tables/restaurant_user_follows.yaml"
+- "!include tables/restaurant_rating_summary.yaml"
+- "!include tables/restaurant_cuisine_rating_summary.yaml"
+- "!include tables/restaurant_review_likes.yaml"

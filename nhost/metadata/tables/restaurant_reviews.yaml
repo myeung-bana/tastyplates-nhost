@@ -1,0 +1,130 @@
+table:
+  name: restaurant_reviews
+  schema: public
+
+select_permissions:
+  - role: public
+    permission:
+      columns:
+        - id
+        - restaurant_uuid
+        - author_id
+        - parent_review_id
+        - title
+        - content
+        - rating
+        - images
+        - palates
+        - hashtags
+        - mentions
+        - recognitions
+        - likes_count
+        - replies_count
+        - status
+        - is_pinned
+        - is_featured
+        - views_count
+        - created_at
+        - updated_at
+        - published_at
+      filter:
+        _and:
+          - status: { _eq: "approved" }
+          - deleted_at: { _is_null: true }
+          - parent_review_id: { _is_null: true }
+      allow_aggregations: true
+
+  - role: user
+    permission:
+      columns:
+        - id
+        - restaurant_uuid
+        - author_id
+        - parent_review_id
+        - title
+        - content
+        - rating
+        - images
+        - palates
+        - hashtags
+        - mentions
+        - recognitions
+        - likes_count
+        - replies_count
+        - status
+        - is_pinned
+        - is_featured
+        - views_count
+        - created_at
+        - updated_at
+        - published_at
+        - deleted_at
+      # Users can see all approved reviews + their own (any status)
+      filter:
+        _and:
+          - deleted_at: { _is_null: true }
+          - _or:
+              - status: { _eq: "approved" }
+              - author_id: { _eq: "X-Hasura-User-Id" }
+      allow_aggregations: true
+
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+
+# Reviews are created via Nhost Functions (which use admin secret),
+# but the user permission here enables direct GraphQL writes from the client for draft saving.
+insert_permissions:
+  - role: user
+    permission:
+      columns:
+        - restaurant_uuid
+        - author_id
+        - parent_review_id
+        - title
+        - content
+        - rating
+        - images
+        - palates
+        - hashtags
+        - mentions
+        - recognitions
+        - status
+      check:
+        author_id:
+          _eq: X-Hasura-User-Id
+
+  - role: admin
+    permission:
+      columns: "*"
+      check: {}
+
+update_permissions:
+  - role: user
+    permission:
+      columns:
+        - title
+        - content
+        - rating
+        - images
+        - palates
+        - hashtags
+        - mentions
+        - recognitions
+        - status
+      filter:
+        _and:
+          - author_id: { _eq: "X-Hasura-User-Id" }
+          - deleted_at: { _is_null: true }
+
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+
+delete_permissions:
+  - role: admin
+    permission:
+      filter: {}
