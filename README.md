@@ -91,7 +91,7 @@ All functions are served under `/v0/` (local standalone) or `/v1/functions/` (Nh
 1. Push this repository to GitHub.
 2. In the Nhost dashboard → **Git** → connect this repo and set the **root path** to `/` (or the subfolder if it's a monorepo).
 3. Add all secrets under **Settings → Secrets**:
-   - `HASURA_GRAPHQL_ADMIN_SECRET`
+   - `NHOST_ADMIN_SECRET`
    - `HASURA_GRAPHQL_JWT_SECRET`
    - `NHOST_WEBHOOK_SECRET`
    - `GRAFANA_ADMIN_PASSWORD`
@@ -109,7 +109,7 @@ Key variables:
 | Variable | Used by |
 |----------|---------|
 | `NHOST_HASURA_URL` | All Hasura queries/mutations |
-| `HASURA_GRAPHQL_ADMIN_SECRET` | Admin-level Hasura access |
+| `NHOST_ADMIN_SECRET` | Admin-level Hasura access |
 | `NHOST_AUTH_URL` | Token verification |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | Caching and rate limiting |
 | `S3_*` | Image uploads |
