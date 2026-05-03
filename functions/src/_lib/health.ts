@@ -21,7 +21,7 @@ export interface HealthResult {
 
 async function pingHasura(): Promise<ServiceCheck> {
   const url = process.env.NHOST_HASURA_URL || process.env.HASURA_GRAPHQL_API_URL;
-  const secret = process.env.NHOST_ADMIN_SECRET;
+  const secret = process.env.HASURA_GRAPHQL_ADMIN_SECRET;
 
   if (!url) {
     return { status: 'error', error: 'NHOST_HASURA_URL not configured' };

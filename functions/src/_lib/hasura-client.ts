@@ -11,7 +11,7 @@ export async function hasuraQuery<T = any>(
   variables?: Record<string, any>
 ): Promise<GraphQLResponse<T>> {
   const HASURA_URL = process.env.NHOST_HASURA_URL || process.env.HASURA_GRAPHQL_API_URL;
-  const HASURA_ADMIN_SECRET = process.env.NHOST_ADMIN_SECRET;
+  const HASURA_ADMIN_SECRET = process.env.HASURA_GRAPHQL_ADMIN_SECRET;
 
   if (!HASURA_URL) {
     throw new Error('NHOST_HASURA_URL or HASURA_GRAPHQL_API_URL is not configured');
