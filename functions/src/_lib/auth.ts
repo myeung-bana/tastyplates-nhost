@@ -73,6 +73,6 @@ export async function getNhostUserId(authHeader: string | null): Promise<string 
 }
 
 export function requireAdminSecret(providedSecret: string | null | undefined): boolean {
-  const adminSecret = process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+  const adminSecret = process.env.GRAPHQL_ADMIN_SECRET;
   return !!adminSecret && providedSecret === adminSecret;
 }
