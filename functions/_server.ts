@@ -1,7 +1,7 @@
-import './env-load';
+import './_env-load';
 import express from 'express';
-import healthzRouter from './routes/healthz';
-import docsRouter from './routes/docs';
+import healthzRouter from './_routes/healthz';
+import docsRouter from './_routes/docs';
 
 // Function handlers
 import imageUpload from './uploads/image';

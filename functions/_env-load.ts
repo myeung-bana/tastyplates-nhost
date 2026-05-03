@@ -8,7 +8,7 @@
 import path from 'path';
 import dotenv from 'dotenv';
 
-const functionsRoot = path.resolve(__dirname, '..');
+const functionsRoot = path.resolve(__dirname);
 
 dotenv.config({ path: path.join(functionsRoot, '.env') });
 dotenv.config({ path: path.join(functionsRoot, '.env.local') });

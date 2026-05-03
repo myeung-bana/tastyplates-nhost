@@ -8,8 +8,8 @@
   "scripts": {
     "build": "tsc --noEmit",
     "dev": "nhost dev",
-    "dev:standalone": "tsx watch src/server.ts",
-    "start": "node -r tsx/cjs src/server.ts"
+    "dev:standalone": "tsx watch _server.ts",
+    "start": "node -r tsx/cjs _server.ts"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^7.3.4",
