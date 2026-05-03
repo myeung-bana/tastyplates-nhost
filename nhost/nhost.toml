@@ -184,10 +184,3 @@ capacity = 1
 version = '0.10.0'
 
 [observability]
-[observability.grafana]
-adminPassword = '{{ secrets.GRAFANA_ADMIN_PASSWORD }}'
-
-[observability.grafana.alerting]
-enabled = false
-
-[observability.grafana.contacts]
