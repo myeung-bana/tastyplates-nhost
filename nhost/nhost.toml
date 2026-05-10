@@ -1,5 +1,8 @@
 [global]
 
+[functions.node]
+version = 22
+
 [hasura]
 version = 'v2.48.5-ce'
 adminSecret = '{{ secrets.HASURA_GRAPHQL_ADMIN_SECRET }}'
