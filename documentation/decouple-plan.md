@@ -1,4 +1,4 @@
-# Decouple Plan — `tastyplates-v2-1` API → Nhost Functions
+# Decouple Plan V2 — `tastyplates-v2-1` API → Nhost Functions
 
 The goal is to move all business logic out of the Next.js `src/app/api/v1/` route handlers into `tastyplates-nhost/functions/` so that `tastyplates-v2-1` becomes a pure frontend.
 
