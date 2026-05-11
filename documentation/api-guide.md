@@ -8,14 +8,14 @@ For coding rules when adding or changing handlers, see [AI_rules.md](./AI_rules.
 
 ## 1. How routing works
 
-Nhost maps each file under `functions/src/` to an HTTP route. The `_lib/` directory is **not** exposed.
+Nhost maps each file under `functions/` to an HTTP route. The `_lib/` directory is **not** exposed.
 
 | Source file | URL path (after the functions version segment) |
 |-------------|--------------------------------------------------|
-| `src/health.ts` | `health` |
-| `src/featured-restaurants.ts` | `featured-restaurants` |
-| `src/categories/get-categories.ts` | `categories/get-categories` |
-| `src/restaurant-reviews/create-review.ts` | `restaurant-reviews/create-review` |
+| `health.ts` | `health` |
+| `featured-restaurants.ts` | `featured-restaurants` |
+| `categories/get-categories.ts` | `categories/get-categories` |
+| `restaurant-reviews/create-review.ts` | `restaurant-reviews/create-review` |
 
 **Full URL pattern:**
 
@@ -38,7 +38,7 @@ Local development with `nhost dev` uses the CLI’s printed functions URL; the s
 
 ## 2. Response envelope
 
-All handlers use the shared helpers in `functions/src/_lib/respond.ts`.
+All handlers use the shared helpers in `functions/_lib/respond.ts`.
 
 **Success**
 
@@ -158,11 +158,11 @@ export async function tastyplatesFetch<T>(
 }
 
 // Example: public GET
-const r = await tastyplatesFetch<{ categories: unknown[] }>('v1/categories/get-categories')
+const r = await tastyplatesFetch<{ categories: unknown[] }>('categories/get-categories')
 if (!r.ok) throw new Error(r.error)
 
 // Example: authenticated POST
-const r2 = await tastyplatesFetch('v1/restaurant-reviews/create-review', {
+const r2 = await tastyplatesFetch('restaurant-reviews/create-review', {
   method: 'POST',
   accessToken: session.accessToken,
   body: JSON.stringify({
@@ -173,7 +173,7 @@ const r2 = await tastyplatesFetch('v1/restaurant-reviews/create-review', {
 })
 ```
 
-Ensure `FUNCTIONS_BASE` matches your dashboard (include or omit `/v1` consistently with `path`).
+Assume `FUNCTIONS_BASE` already ends with `/v1` and append only the route path (`health`, `categories/get-categories`, etc.).
 
 ### 6.2 Nhost JavaScript client (browser)
 
@@ -183,7 +183,7 @@ After `nhost.auth.signIn…` or session restore:
 import { nhost } from '@/lib/nhost' // your configured client
 
 const accessToken = nhost.auth.getAccessToken()
-const res = await fetch(`${process.env.NEXT_PUBLIC_NHOST_FUNCTIONS_URL}/v1/restaurant-reviews/get-draft-reviews`, {
+const res = await fetch(`${process.env.NEXT_PUBLIC_NHOST_FUNCTIONS_URL}/restaurant-reviews/get-draft-reviews`, {
   headers: {
     Authorization: `Bearer ${accessToken}`,
   },
@@ -199,7 +199,7 @@ Use the same access token you would send to Hasura with role `user`.
 const form = new FormData()
 form.append('file', fileBlob, 'photo.jpg')
 
-const res = await fetch(`${base}/v1/upload/image`, {
+const res = await fetch(`${base}/upload/image`, {
   method: 'POST',
   headers: { Authorization: `Bearer ${accessToken}` },
   body: form,
@@ -346,18 +346,18 @@ Legend: **Auth** — `None` | `Bearer` | `Optional Bearer` | `Admin header`
 
 ## 9. Testing with `curl`
 
-Replace `BASE` with your real functions URL (including version segment once).
+Replace `BASE` with your real functions URL ending in `/v1`.
 
 ```bash
-curl -sS "$BASE/v1/health" | jq .
+curl -sS "$BASE/health" | jq .
 
-curl -sS "$BASE/v1/categories/get-categories?limit=5" | jq .
+curl -sS "$BASE/categories/get-categories?limit=5" | jq .
 
-curl -sS -X POST "$BASE/v1/restaurants-v2/match-restaurant" \
+curl -sS -X POST "$BASE/restaurants-v2/match-restaurant" \
   -H "Content-Type: application/json" \
   -d '{"name":"Some Place","address":"123 Main"}' | jq .
 
-curl -sS "$BASE/v1/restaurant-reviews/get-draft-reviews" \
+curl -sS "$BASE/restaurant-reviews/get-draft-reviews" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq .
 ```
 
@@ -365,7 +365,7 @@ curl -sS "$BASE/v1/restaurant-reviews/get-draft-reviews" \
 
 ## 10. Operational checklist
 
-1. **Dashboard secrets** — All variables referenced in `functions/src/` are set for **production**.
+1. **Dashboard secrets** — All variables referenced in `functions/` are set for **production**.
 2. **Functions URL** — `NEXT_PUBLIC_NHOST_FUNCTIONS_URL` (or equivalent) matches the dashboard base and path concatenation rules in §1.
 3. **Remove or lock down `echo`** before high-traffic production.
 4. **Rate limiting** — Not built into all handlers yet; add Redis or edge limits for public POST/GET hot paths before exposing to hostile traffic.
@@ -380,4 +380,4 @@ curl -sS "$BASE/v1/restaurant-reviews/get-draft-reviews" \
 | [AI_rules.md](./AI_rules.md) | Non-negotiable patterns for function code |
 | [decouple-plan.md](./decouple-plan.md) | Phased migration from Next.js `/api/v1` |
 
-When in doubt about query parameter names for a specific route, open the matching file under `functions/src/` — the handler documents the contract in code.
+When in doubt about query parameter names for a specific route, open the matching file under `functions/` — the handler documents the contract in code.

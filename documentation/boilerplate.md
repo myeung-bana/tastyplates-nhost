@@ -11,18 +11,17 @@ Everything here follows the [Nhost Functions Getting Started guide](https://docs
 functions/
 ├── package.json               # Node 22, dependencies, scripts
 ├── tsconfig.json              # Strict TS, path aliases
-└── src/
-    ├── _lib/
-    │   ├── auth.ts            # JWT verification helper
-    │   ├── respond.ts         # Typed response envelope helpers
-    │   └── validate.ts        # Zod request validation wrapper
-    ├── health.ts              # GET /health — liveness probe
-    └── echo.ts                # GET /echo  — smoke test (remove in prod)
+├── _lib/
+│   ├── auth.ts                # JWT verification helper
+│   ├── respond.ts             # Typed response envelope helpers
+│   └── validate.ts            # Zod request validation wrapper
+├── health.ts                  # GET /health — liveness probe
+└── echo.ts                    # GET /echo  — smoke test (remove in prod)
 ```
 
-> **How Nhost resolves routes:** a file at `src/reviews/create.ts` is callable at
-> `{FUNCTIONS_URL}/v1/reviews/create`. The `src/` prefix is stripped; subdirectories
-> become path segments.
+> **How Nhost resolves routes:** a file at `reviews/create.ts` is callable at
+> `{FUNCTIONS_URL}/v1/reviews/create`. Route files live directly under `functions/`;
+> subdirectories become path segments, while underscored paths like `_lib/` stay internal.
 
 ---
 
@@ -72,12 +71,12 @@ functions/
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": ".",
     "paths": {
-      "@lib/*": ["src/_lib/*"]
+      "@lib/*": ["_lib/*"]
     }
   },
-  "include": ["src/**/*"],
+  "include": ["**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
 ```
@@ -100,9 +99,9 @@ This pins the cloud runtime to Node 22, matching your `engines` field above.
 
 ---
 
-## 4. Shared library — `src/_lib/`
+## 4. Shared library — `_lib/`
 
-### `src/_lib/respond.ts`
+### `_lib/respond.ts`
 
 Typed response helpers that enforce a consistent envelope across every function.
 
@@ -125,7 +124,7 @@ export function fail(
 }
 ```
 
-### `src/_lib/validate.ts`
+### `_lib/validate.ts`
 
 Zod validation wrapper — call this at the top of any handler that accepts a request body.
 
@@ -160,7 +159,7 @@ export function validate<T>(
 }
 ```
 
-### `src/_lib/auth.ts`
+### `_lib/auth.ts`
 
 JWT verification using the Nhost JWKS endpoint (asymmetric / RS256).
 Uses `jwks-rsa` with a 24-hour public key cache to avoid hammering the auth service.
@@ -246,7 +245,7 @@ export function getUserId(payload: NhostJwtPayload): string {
 
 ## 5. Function handlers
 
-### `src/health.ts`
+### `health.ts`
 
 The liveness probe — deploy this first and verify it returns 200 before writing any other logic.
 
@@ -284,7 +283,7 @@ export default (_req: Request, res: Response): void => {
 
 ---
 
-### `src/echo.ts`
+### `echo.ts`
 
 A smoke-test endpoint useful during initial deployment to confirm routing, headers, and JWT flow work end-to-end. **Remove or gate behind an env flag before going to production.**
 
@@ -383,7 +382,7 @@ curl -H "Authorization: Bearer <your-local-jwt>" \
 Once `health` deploys successfully, follow this pattern for every new handler:
 
 ```typescript
-// src/reviews/create.ts
+// reviews/create.ts
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 import { requireAuth, getUserId } from '../_lib/auth'

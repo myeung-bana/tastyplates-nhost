@@ -1,6 +1,6 @@
 # tastyplates-nhost
 
-Nhost-linked repository for Tastyplates: **Hasura / Auth / Postgres configuration** and **auth email templates**. Custom Nhost Functions have been removed for now; API logic can live in another repo or be re-added later.
+Nhost-linked repository for Tastyplates: **Hasura / Auth / Postgres configuration**, **auth email templates**, and **Nhost Functions** using the standard root-level routing layout under `functions/`.
 
 | Directory | Contents |
 |-----------|----------|
@@ -8,6 +8,7 @@ Nhost-linked repository for Tastyplates: **Hasura / Auth / Postgres configuratio
 | `nhost/migrations/` | SQL migrations (schema source of truth) |
 | `nhost/metadata/` | Hasura permissions and relationships |
 | `nhost/emails/` | Auth email templates (verify, reset, OTP, etc.) |
+| `functions/` | Deployable Nhost Functions and shared helpers |
 | `documentation/` | Architecture and migration runbooks |
 
 ---
@@ -20,7 +21,7 @@ Install the [Nhost CLI](https://docs.nhost.io/cli), then from the repo root:
 nhost up
 ```
 
-This starts Postgres, Hasura, Auth, and related services defined in `nhost.toml`.
+This starts Postgres, Hasura, Auth, Functions, and related services defined in `nhost.toml`.
 
 ---
 
@@ -35,4 +36,4 @@ This starts Postgres, Hasura, Auth, and related services defined in `nhost.toml`
 
 ## Documentation
 
-- [Decouple migration plan](documentation/decouple-migration.md)
+- [Decouple migration plan](documentation/decouple-plan.md)

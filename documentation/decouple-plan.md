@@ -1,9 +1,9 @@
 # Decouple Plan — `tastyplates-v2-1` API → Nhost Functions
 
-The goal is to move all business logic out of the Next.js `src/app/api/v1/` route handlers into `tastyplates-nhost/functions/src/` so that `tastyplates-v2-1` becomes a pure frontend.
+The goal is to move all business logic out of the Next.js `src/app/api/v1/` route handlers into `tastyplates-nhost/functions/` so that `tastyplates-v2-1` becomes a pure frontend.
 
 Each Nhost function file maps directly to a URL:
-`functions/src/<domain>/<action>.ts` → `{FUNCTIONS_URL}/v1/<domain>/<action>`
+`functions/<domain>/<action>.ts` → `{FUNCTIONS_URL}/v1/<domain>/<action>`
 
 ---
 
@@ -26,17 +26,17 @@ Each Nhost function file maps directly to a URL:
 
 ## Shared infrastructure to build before Phase 1
 
-Before porting any handler, create these shared files under `functions/src/_lib/`:
+Before porting any handler, create these shared files under `functions/_lib/`:
 
 | File | Purpose |
 |------|---------|
-| `src/_lib/hasura.ts` | `hasuraQuery<T>()` and `hasuraMutation<T>()` wrappers with admin-secret header + error unwrapping |
-| `src/_lib/redis.ts` | (Phase 5+) Upstash Redis client instance, `cacheGetOrSet()`, `bumpVersion()`, rate-limit helpers |
-| `src/_lib/cursor.ts` | (Phase 3+) `encodeReviewCursor()` / `decodeReviewCursor()` — ported from `@/lib/cursor-pagination` |
+| `_lib/hasura.ts` | `hasuraQuery<T>()` and `hasuraMutation<T>()` wrappers with admin-secret header + error unwrapping |
+| `_lib/redis.ts` | (Phase 5+) Upstash Redis client instance, `cacheGetOrSet()`, `bumpVersion()`, rate-limit helpers |
+| `_lib/cursor.ts` | (Phase 3+) `encodeReviewCursor()` / `decodeReviewCursor()` — ported from `@/lib/cursor-pagination` |
 
 The `_lib/hasura.ts` wrapper should look like:
 ```typescript
-// functions/src/_lib/hasura.ts
+// functions/_lib/hasura.ts
 import process from 'node:process'
 import { fail } from './respond'
 import type { Response } from 'express'
@@ -71,11 +71,11 @@ Already built:
 
 | Nhost function file | Route | What it does |
 |--------------------|-------|--------------|
-| `src/health.ts` | `GET /v1/health` | Liveness probe |
-| `src/echo.ts` | `GET /v1/echo` | Auth smoke-test |
-| `src/_lib/auth.ts` | — | JWT verification (HS256) |
-| `src/_lib/respond.ts` | — | `ok()` / `fail()` |
-| `src/_lib/validate.ts` | — | Zod validation wrapper |
+| `health.ts` | `GET /v1/health` | Liveness probe |
+| `echo.ts` | `GET /v1/echo` | Auth smoke-test |
+| `_lib/auth.ts` | — | JWT verification (HS256) |
+| `_lib/respond.ts` | — | `ok()` / `fail()` |
+| `_lib/validate.ts` | — | Zod validation wrapper |
 
 **Test before moving on:** `curl {FUNCTIONS_URL}/v1/health` returns `{ "ok": true }`.
 
@@ -87,15 +87,15 @@ These are simple passthrough reads. Port them first to validate the Hasura wrapp
 
 | Next.js route | Nhost function file | Methods | Auth | Notes |
 |--------------|---------------------|---------|------|-------|
-| `categories/get-categories` | `src/categories/get-categories.ts` | GET | No | List all categories |
-| `categories/get-category-by-id` | `src/categories/get-category-by-id.ts` | GET | No | By `id` query param |
-| `cuisines/get-cuisines` | `src/cuisines/get-cuisines.ts` | GET | No | List all cuisines |
-| `cuisines/get-cuisine-by-id` | `src/cuisines/get-cuisine-by-id.ts` | GET | No | By `id` query param |
-| `palates/get-palates` | `src/palates/get-palates.ts` | GET | No | List all palates |
-| `palates/get-palate-by-id` | `src/palates/get-palate-by-id.ts` | GET | No | By `id` query param |
-| `price-ranges/get-price-ranges` | `src/price-ranges/get-price-ranges.ts` | GET | No | List all price ranges |
-| `price-ranges/get-price-range-by-id` | `src/price-ranges/get-price-range-by-id.ts` | GET | No | By `id` query param |
-| `locations/get-locations` | `src/locations/get-locations.ts` | GET | No | Location hierarchy |
+| `categories/get-categories` | `categories/get-categories.ts` | GET | No | List all categories |
+| `categories/get-category-by-id` | `categories/get-category-by-id.ts` | GET | No | By `id` query param |
+| `cuisines/get-cuisines` | `cuisines/get-cuisines.ts` | GET | No | List all cuisines |
+| `cuisines/get-cuisine-by-id` | `cuisines/get-cuisine-by-id.ts` | GET | No | By `id` query param |
+| `palates/get-palates` | `palates/get-palates.ts` | GET | No | List all palates |
+| `palates/get-palate-by-id` | `palates/get-palate-by-id.ts` | GET | No | By `id` query param |
+| `price-ranges/get-price-ranges` | `price-ranges/get-price-ranges.ts` | GET | No | List all price ranges |
+| `price-ranges/get-price-range-by-id` | `price-ranges/get-price-range-by-id.ts` | GET | No | By `id` query param |
+| `locations/get-locations` | `locations/get-locations.ts` | GET | No | Location hierarchy |
 
 **Testing Phase 1:**
 ```bash
@@ -112,14 +112,14 @@ Read-only routes. Add Redis caching to high-traffic ones (get-restaurants, get-r
 
 | Next.js route | Nhost function file | Methods | Auth | Notes |
 |--------------|---------------------|---------|------|-------|
-| `restaurants-v2/get-restaurants` | `src/restaurants-v2/get-restaurants.ts` | GET | No | Filtering, sorting, cursor pagination, palate slug util. Cache. |
-| `restaurants-v2/get-restaurant-by-id` | `src/restaurants-v2/get-restaurant-by-id.ts` | GET | No | By `id` or `slug` query param |
-| `restaurants-v2/get-rating-summary` | `src/restaurants-v2/get-rating-summary.ts` | GET | No | Precomputed rating for one restaurant. Cache. |
-| `restaurants-v2/get-authentic-stats` | `src/restaurants-v2/get-authentic-stats.ts` | GET | No | Authentic rating map. Cache. |
-| `restaurants-v2/get-preference-stats` | `src/restaurants-v2/get-preference-stats.ts` | GET | No | Palate preference stats. Cache. |
-| `restaurants-v2/match-restaurant` | `src/restaurants-v2/match-restaurant.ts` | POST | No | Name/address match for review creation |
-| `restaurants-v2/test-connection` | `src/restaurants-v2/test-connection.ts` | GET | No | Hasura connectivity diagnostic; dev-only gate |
-| `featured-restaurants` | `src/featured-restaurants.ts` | GET | No | Global featured list. Cache. |
+| `restaurants-v2/get-restaurants` | `restaurants-v2/get-restaurants.ts` | GET | No | Filtering, sorting, cursor pagination, palate slug util. Cache. |
+| `restaurants-v2/get-restaurant-by-id` | `restaurants-v2/get-restaurant-by-id.ts` | GET | No | By `id` or `slug` query param |
+| `restaurants-v2/get-rating-summary` | `restaurants-v2/get-rating-summary.ts` | GET | No | Precomputed rating for one restaurant. Cache. |
+| `restaurants-v2/get-authentic-stats` | `restaurants-v2/get-authentic-stats.ts` | GET | No | Authentic rating map. Cache. |
+| `restaurants-v2/get-preference-stats` | `restaurants-v2/get-preference-stats.ts` | GET | No | Palate preference stats. Cache. |
+| `restaurants-v2/match-restaurant` | `restaurants-v2/match-restaurant.ts` | POST | No | Name/address match for review creation |
+| `restaurants-v2/test-connection` | `restaurants-v2/test-connection.ts` | GET | No | Hasura connectivity diagnostic; dev-only gate |
+| `featured-restaurants` | `featured-restaurants.ts` | GET | No | Global featured list. Cache. |
 
 **Testing Phase 2:**
 ```bash
@@ -135,13 +135,13 @@ All read-only. Cursor pagination helpers (`_lib/cursor.ts`) needed for `get-all-
 
 | Next.js route | Nhost function file | Methods | Auth | Notes |
 |--------------|---------------------|---------|------|-------|
-| `restaurant-reviews/get-all-reviews` | `src/restaurant-reviews/get-all-reviews.ts` | GET | No | Global feed, cursor pagination. Cache. |
-| `restaurant-reviews/get-review-by-id` | `src/restaurant-reviews/get-review-by-id.ts` | GET | No | Single review by `id` |
-| `restaurant-reviews/get-reviews-by-restaurant` | `src/restaurant-reviews/get-reviews-by-restaurant.ts` | GET | No | Restaurant's reviews. Cache. |
-| `restaurant-reviews/get-user-reviews` | `src/restaurant-reviews/get-user-reviews.ts` | GET | No | Reviews by `author_id` query param |
-| `restaurant-reviews/get-following-feed` | `src/restaurant-reviews/get-following-feed.ts` | GET | No | Feed from followed users; cursor. Cache. |
-| `restaurant-reviews/get-replies` | `src/restaurant-reviews/get-replies.ts` | GET | No | Threaded replies. Cache. |
-| `restaurant-reviews/get-draft-reviews` | `src/restaurant-reviews/get-draft-reviews.ts` | GET | **Yes (Bearer)** | Current user's drafts — derive user from JWT |
+| `restaurant-reviews/get-all-reviews` | `restaurant-reviews/get-all-reviews.ts` | GET | No | Global feed, cursor pagination. Cache. |
+| `restaurant-reviews/get-review-by-id` | `restaurant-reviews/get-review-by-id.ts` | GET | No | Single review by `id` |
+| `restaurant-reviews/get-reviews-by-restaurant` | `restaurant-reviews/get-reviews-by-restaurant.ts` | GET | No | Restaurant's reviews. Cache. |
+| `restaurant-reviews/get-user-reviews` | `restaurant-reviews/get-user-reviews.ts` | GET | No | Reviews by `author_id` query param |
+| `restaurant-reviews/get-following-feed` | `restaurant-reviews/get-following-feed.ts` | GET | No | Feed from followed users; cursor. Cache. |
+| `restaurant-reviews/get-replies` | `restaurant-reviews/get-replies.ts` | GET | No | Threaded replies. Cache. |
+| `restaurant-reviews/get-draft-reviews` | `restaurant-reviews/get-draft-reviews.ts` | GET | **Yes (Bearer)** | Current user's drafts — derive user from JWT |
 
 **Testing Phase 3:**
 ```bash
@@ -158,20 +158,20 @@ All read-only. No auth required except `check-follow-status` and `suggested` (op
 
 | Next.js route | Nhost function file | Methods | Auth | Notes |
 |--------------|---------------------|---------|------|-------|
-| `restaurant-users/get-restaurant-users` | `src/restaurant-users/get-restaurant-users.ts` | GET | No | Search/list users |
-| `restaurant-users/get-restaurant-user-by-id` | `src/restaurant-users/get-restaurant-user-by-id.ts` | GET | No | User profile by UUID |
-| `restaurant-users/get-restaurant-user-by-username` | `src/restaurant-users/get-restaurant-user-by-username.ts` | GET | No | User profile by username |
-| `restaurant-users/get-restaurant-user-by-firebase-uuid` | `src/restaurant-users/get-restaurant-user-by-firebase-uuid.ts` | GET | No | **Return 410 Gone** — deprecated stub, keep to avoid 404s during transition |
-| `restaurant-users/check-username` | `src/restaurant-users/check-username.ts` | GET | No | Username availability |
-| `restaurant-users/get-followers-list` | `src/restaurant-users/get-followers-list.ts` | GET | No | Follower list |
-| `restaurant-users/get-following-list` | `src/restaurant-users/get-following-list.ts` | GET | No | Following list |
-| `restaurant-users/get-followers-count` | `src/restaurant-users/get-followers-count.ts` | GET | No | Follower count |
-| `restaurant-users/get-following-count` | `src/restaurant-users/get-following-count.ts` | GET | No | Following count |
-| `restaurant-users/get-wishlist` | `src/restaurant-users/get-wishlist.ts` | GET | No | User's saved restaurants |
-| `restaurant-users/get-checkins` | `src/restaurant-users/get-checkins.ts` | GET | No | User's check-ins |
-| `restaurant-users/get-reviews` | `src/restaurant-users/get-reviews.ts` | GET | No | User's reviews |
-| `restaurant-users/suggested` | `src/restaurant-users/suggested.ts` | GET | Optional Bearer | Suggested users; personalise if token present. Cache. |
-| `restaurant-users/check-follow-status` | `src/restaurant-users/check-follow-status.ts` | POST | **Yes (Bearer)** | Whether current user follows target |
+| `restaurant-users/get-restaurant-users` | `restaurant-users/get-restaurant-users.ts` | GET | No | Search/list users |
+| `restaurant-users/get-restaurant-user-by-id` | `restaurant-users/get-restaurant-user-by-id.ts` | GET | No | User profile by UUID |
+| `restaurant-users/get-restaurant-user-by-username` | `restaurant-users/get-restaurant-user-by-username.ts` | GET | No | User profile by username |
+| `restaurant-users/get-restaurant-user-by-firebase-uuid` | `restaurant-users/get-restaurant-user-by-firebase-uuid.ts` | GET | No | **Return 410 Gone** — deprecated stub, keep to avoid 404s during transition |
+| `restaurant-users/check-username` | `restaurant-users/check-username.ts` | GET | No | Username availability |
+| `restaurant-users/get-followers-list` | `restaurant-users/get-followers-list.ts` | GET | No | Follower list |
+| `restaurant-users/get-following-list` | `restaurant-users/get-following-list.ts` | GET | No | Following list |
+| `restaurant-users/get-followers-count` | `restaurant-users/get-followers-count.ts` | GET | No | Follower count |
+| `restaurant-users/get-following-count` | `restaurant-users/get-following-count.ts` | GET | No | Following count |
+| `restaurant-users/get-wishlist` | `restaurant-users/get-wishlist.ts` | GET | No | User's saved restaurants |
+| `restaurant-users/get-checkins` | `restaurant-users/get-checkins.ts` | GET | No | User's check-ins |
+| `restaurant-users/get-reviews` | `restaurant-users/get-reviews.ts` | GET | No | User's reviews |
+| `restaurant-users/suggested` | `restaurant-users/suggested.ts` | GET | Optional Bearer | Suggested users; personalise if token present. Cache. |
+| `restaurant-users/check-follow-status` | `restaurant-users/check-follow-status.ts` | POST | **Yes (Bearer)** | Whether current user follows target |
 
 **Testing Phase 4:**
 ```bash
@@ -191,11 +191,11 @@ Add Redis rate limits before shipping these to production.
 
 | Next.js route | Nhost function file | Methods | Auth | Notes |
 |--------------|---------------------|---------|------|-------|
-| `restaurant-reviews/create-review` | `src/restaurant-reviews/create-review.ts` | POST | **Yes (Bearer)** | Auth required — derive `author_id` from JWT, never trust body. Rate limit. Rebuild rating summary after. Bump cache version. |
-| `restaurant-reviews/update-review` | `src/restaurant-reviews/update-review.ts` | PUT | **Yes (Bearer)** | Check review belongs to JWT user before updating. Bump cache version. |
-| `restaurant-reviews/delete-review` | `src/restaurant-reviews/delete-review.ts` | DELETE | **Yes (Bearer)** | Soft-delete. Ownership check. Bump version. |
-| `restaurant-reviews/create-comment` | `src/restaurant-reviews/create-comment.ts` | POST | **Yes (Bearer)** | Auth required. Rate limit. Bump version. |
-| `restaurant-reviews/toggle-like` | `src/restaurant-reviews/toggle-like.ts` | POST, GET | **Yes (Bearer)** | POST: toggle; GET: like status. Rate limit on POST. |
+| `restaurant-reviews/create-review` | `restaurant-reviews/create-review.ts` | POST | **Yes (Bearer)** | Auth required — derive `author_id` from JWT, never trust body. Rate limit. Rebuild rating summary after. Bump cache version. |
+| `restaurant-reviews/update-review` | `restaurant-reviews/update-review.ts` | PUT | **Yes (Bearer)** | Check review belongs to JWT user before updating. Bump cache version. |
+| `restaurant-reviews/delete-review` | `restaurant-reviews/delete-review.ts` | DELETE | **Yes (Bearer)** | Soft-delete. Ownership check. Bump version. |
+| `restaurant-reviews/create-comment` | `restaurant-reviews/create-comment.ts` | POST | **Yes (Bearer)** | Auth required. Rate limit. Bump version. |
+| `restaurant-reviews/toggle-like` | `restaurant-reviews/toggle-like.ts` | POST, GET | **Yes (Bearer)** | POST: toggle; GET: like status. Rate limit on POST. |
 
 **Security note on `create-review`:** The current Next.js implementation accepts `author_id` in the request body (caller-trusted). In the Nhost function, this must be replaced — always use `getUserId(payload)` from the JWT. Do not accept an `author_id` from the client.
 
@@ -205,14 +205,14 @@ Add Redis rate limits before shipping these to production.
 
 | Next.js route | Nhost function file | Methods | Auth | Notes |
 |--------------|---------------------|---------|------|-------|
-| `restaurant-users/create-restaurant-user` | `src/restaurant-users/create-restaurant-user.ts` | POST | No (called at signup) | Creates profile record after Nhost signup. No auth needed — verified against the Nhost user ID from the Hasura action/event. |
-| `restaurant-users/update-restaurant-user` | `src/restaurant-users/update-restaurant-user.ts` | PUT | **Yes (Bearer)** | User updates own profile. Derive user from JWT. |
-| `restaurant-users/delete-restaurant-user` | `src/restaurant-users/delete-restaurant-user.ts` | DELETE | **Yes (Bearer)** | Ownership check. Soft-delete. |
-| `restaurant-users/follow` | `src/restaurant-users/follow.ts` | POST | **Yes (Bearer)** | Rate limit. Derive follower from JWT. |
-| `restaurant-users/unfollow` | `src/restaurant-users/unfollow.ts` | POST | **Yes (Bearer)** | Rate limit. |
-| `restaurant-users/toggle-favorite` | `src/restaurant-users/toggle-favorite.ts` | POST, GET | **Yes (Bearer)** | POST: toggle; GET: status. Rate limit on POST. |
-| `restaurant-users/toggle-checkin` | `src/restaurant-users/toggle-checkin.ts` | POST, GET | **Yes (Bearer)** | POST: toggle; GET: status. Rate limit on POST. |
-| `restaurants-v2/create-restaurant` | `src/restaurants-v2/create-restaurant.ts` | POST | **Yes (Bearer)** | Creates restaurant listing. Validate input. No direct S3 here — image URLs pass through as strings. |
+| `restaurant-users/create-restaurant-user` | `restaurant-users/create-restaurant-user.ts` | POST | No (called at signup) | Creates profile record after Nhost signup. No auth needed — verified against the Nhost user ID from the Hasura action/event. |
+| `restaurant-users/update-restaurant-user` | `restaurant-users/update-restaurant-user.ts` | PUT | **Yes (Bearer)** | User updates own profile. Derive user from JWT. |
+| `restaurant-users/delete-restaurant-user` | `restaurant-users/delete-restaurant-user.ts` | DELETE | **Yes (Bearer)** | Ownership check. Soft-delete. |
+| `restaurant-users/follow` | `restaurant-users/follow.ts` | POST | **Yes (Bearer)** | Rate limit. Derive follower from JWT. |
+| `restaurant-users/unfollow` | `restaurant-users/unfollow.ts` | POST | **Yes (Bearer)** | Rate limit. |
+| `restaurant-users/toggle-favorite` | `restaurant-users/toggle-favorite.ts` | POST, GET | **Yes (Bearer)** | POST: toggle; GET: status. Rate limit on POST. |
+| `restaurant-users/toggle-checkin` | `restaurant-users/toggle-checkin.ts` | POST, GET | **Yes (Bearer)** | POST: toggle; GET: status. Rate limit on POST. |
+| `restaurants-v2/create-restaurant` | `restaurants-v2/create-restaurant.ts` | POST | **Yes (Bearer)** | Creates restaurant listing. Validate input. No direct S3 here — image URLs pass through as strings. |
 
 **Security notes:**
 - `follow` and `unfollow`: current implementation accepts `user_id` (the person to follow) in the body — this is fine, since it's the target. The follower/actor must always come from the JWT, never the body.
@@ -226,13 +226,13 @@ Highest complexity. Requires adding S3 SDK and Sharp to `functions/package.json`
 
 | Next.js route | Nhost function file | Methods | Auth | Notes |
 |--------------|---------------------|---------|------|-------|
-| `upload/image` | `src/upload/image.ts` | POST | **Yes (Bearer)** | Multipart → Sharp optimize (AVIF-first, WebP fallback) → S3. Rate limit. |
-| `upload/batch` | `src/upload/batch.ts` | POST | **Yes (Bearer)** | Multipart multi-file → S3 (no Sharp). Rate limit. |
-| `images/download-google-photo` | `src/images/download-google-photo.ts` | POST | No | Proxy Google Places photo to base64. Rate limit. No S3 or Sharp. |
-| `articles/get-articles` | `src/articles/get-articles.ts` | GET | No | List articles; location filter, pagination. Cache. |
-| `articles/get-article-by-slug` | `src/articles/get-article-by-slug.ts` | GET | No | Article by slug. Cache. |
-| `articles/get-article-by-id` | `src/articles/get-article-by-id.ts` | GET | No | Article by id. Cache. |
-| `content/[type]` | `src/content/[type].ts` | GET | No | Static markdown pages (legal, ToS, etc.) — load from `_lib/content/` or env-hosted content |
+| `upload/image` | `upload/image.ts` | POST | **Yes (Bearer)** | Multipart → Sharp optimize (AVIF-first, WebP fallback) → S3. Rate limit. |
+| `upload/batch` | `upload/batch.ts` | POST | **Yes (Bearer)** | Multipart multi-file → S3 (no Sharp). Rate limit. |
+| `images/download-google-photo` | `images/download-google-photo.ts` | POST | No | Proxy Google Places photo to base64. Rate limit. No S3 or Sharp. |
+| `articles/get-articles` | `articles/get-articles.ts` | GET | No | List articles; location filter, pagination. Cache. |
+| `articles/get-article-by-slug` | `articles/get-article-by-slug.ts` | GET | No | Article by slug. Cache. |
+| `articles/get-article-by-id` | `articles/get-article-by-id.ts` | GET | No | Article by id. Cache. |
+| `content/[type]` | `content/[type].ts` | GET | No | Static markdown pages (legal, ToS, etc.) — load from `_lib/content/` or env-hosted content |
 
 **Note on `content/[type]`:** The current implementation uses `markdownLoader` which reads files from disk. In Nhost Functions, file access is limited. Options:
 1. Move the markdown content into the Hasura DB as a table.
@@ -268,8 +268,8 @@ Low priority. Port last.
 
 | Next.js route | Nhost function file | Methods | Auth | Notes |
 |--------------|---------------------|---------|------|-------|
-| `admin/backfill-rating-summary` | `src/admin/backfill-rating-summary.ts` | POST | Admin secret header | Verify `x-admin-secret` matches env. Not user JWT. |
-| `monitoring/graphql-stats` | `src/monitoring/graphql-stats.ts` | GET | Dev gate | Guard with `NODE_ENV !== 'production'` or a secret header. In-memory stats are per-instance; not useful in serverless anyway — consider removing entirely. |
+| `admin/backfill-rating-summary` | `admin/backfill-rating-summary.ts` | POST | Admin secret header | Verify `x-admin-secret` matches env. Not user JWT. |
+| `monitoring/graphql-stats` | `monitoring/graphql-stats.ts` | GET | Dev gate | Guard with `NODE_ENV !== 'production'` or a secret header. In-memory stats are per-instance; not useful in serverless anyway — consider removing entirely. |
 
 ---
 

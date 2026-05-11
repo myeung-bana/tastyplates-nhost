@@ -1,7 +1,7 @@
 # AI Rules — `tastyplates-nhost` Functions
 
 Non-negotiable rules for every function written in this project.
-These apply to every file under `functions/src/`, every PR, and every AI-generated suggestion.
+These apply to every file under `functions/`, every PR, and every AI-generated suggestion.
 If a suggestion violates a rule here, reject it.
 
 ---
@@ -24,15 +24,14 @@ functions/
 ├── package.json
 ├── package-lock.json        ← commit this; Nhost auto-detects npm from it
 ├── tsconfig.json
-└── src/
-    ├── _lib/
-    │   ├── auth.ts          ← JWT verification only
-    │   ├── respond.ts       ← ok() / fail() only
-    │   └── validate.ts      ← Zod validation wrapper only
-    ├── health.ts            ← liveness probe; never remove
-    ├── echo.ts              ← smoke-test; remove before prod
-    └── <domain>/
-        └── <action>.ts      ← one handler per file; see naming rules below
+├── _lib/
+│   ├── auth.ts              ← JWT verification only
+│   ├── respond.ts           ← ok() / fail() only
+│   └── validate.ts          ← Zod validation wrapper only
+├── health.ts                ← liveness probe; never remove
+├── echo.ts                  ← smoke-test; remove before prod
+└── <domain>/
+    └── <action>.ts          ← one handler per file; see naming rules below
 ```
 
 **Rules:**
@@ -44,13 +43,13 @@ functions/
 
 ## 3. Route naming — file path is the URL
 
-Nhost resolves routes directly from file paths under `src/`:
+Nhost resolves routes directly from file paths under `functions/`:
 
 | File | HTTP route |
 |------|-----------|
-| `src/health.ts` | `{FUNCTIONS_URL}/v1/health` |
-| `src/restaurants-v2/get-restaurants.ts` | `{FUNCTIONS_URL}/v1/restaurants-v2/get-restaurants` |
-| `src/restaurant-reviews/create-review.ts` | `{FUNCTIONS_URL}/v1/restaurant-reviews/create-review` |
+| `health.ts` | `{FUNCTIONS_URL}/v1/health` |
+| `restaurants-v2/get-restaurants.ts` | `{FUNCTIONS_URL}/v1/restaurants-v2/get-restaurants` |
+| `restaurant-reviews/create-review.ts` | `{FUNCTIONS_URL}/v1/restaurant-reviews/create-review` |
 
 **Rules:**
 - Use `kebab-case` for all file and directory names — no camelCase, no underscores in routes.
@@ -242,7 +241,7 @@ const result = await fetch(HASURA_ENDPOINT, {
 
 ## 12. Uploads (when S3 + Sharp are added)
 
-- Image processing (Sharp) and S3 uploads must live in `src/upload/` — never inline in a review or restaurant creation handler.
+- Image processing (Sharp) and S3 uploads must live in `upload/` — never inline in a review or restaurant creation handler.
 - Never read a file from the filesystem. All file data comes from multipart request body.
 - Accepted formats: JPEG, PNG, WebP, AVIF — reject others with `fail(res, 'Unsupported file type', 415)`.
 - Sharp optimization is applied server-side before upload: AVIF-first, WebP fallback. Never upload unprocessed originals.
