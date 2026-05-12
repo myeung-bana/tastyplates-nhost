@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express'
+import { requireAuth, getUserId } from '../_lib/auth'
 import { hasuraQuery } from '../_lib/hasura'
 import { ok, fail } from '../_lib/respond'
 
@@ -24,13 +25,18 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 export default async (req: Request, res: Response): Promise<void> => {
   try {
+    const payload = await requireAuth(req, res)
+    if (!payload) return
+
+    const authUserId = getUserId(payload)
     const url = new URL(req.url, 'http://localhost')
-    const userId = url.searchParams.get('user_id')
+    const userId = url.searchParams.get('user_id') ?? authUserId
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20'), 100)
     const offset = parseInt(url.searchParams.get('offset') ?? '0') || 0
 
     if (!userId) return fail(res, 'Missing required param: user_id', 400)
     if (!UUID_REGEX.test(userId)) return fail(res, 'Invalid UUID format', 400)
+    if (userId !== authUserId) return fail(res, 'Forbidden', 403)
 
     type FavoritesResult = {
       user_favorites: Array<{ id: string; created_at: string; restaurant_uuid: string }>

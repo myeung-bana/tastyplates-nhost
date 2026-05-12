@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express'
-import process from 'node:process'
+import { ADMIN_SECRET } from '../_lib/env'
 import { hasuraQuery, hasuraMutation } from '../_lib/hasura'
 import { ok, fail } from '../_lib/respond'
 
@@ -29,7 +29,7 @@ const UPSERT_RATING_SUMMARY = `
 export default async (req: Request, res: Response): Promise<void> => {
   try {
     const adminSecret = req.headers['x-admin-secret']
-    if (!adminSecret || adminSecret !== process.env.HASURA_GRAPHQL_ADMIN_SECRET) {
+    if (!adminSecret || adminSecret !== ADMIN_SECRET) {
       return fail(res, 'Unauthorized', 401)
     }
 

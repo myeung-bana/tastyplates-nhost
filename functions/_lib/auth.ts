@@ -1,7 +1,9 @@
 import type { Request, Response } from 'express'
-import process from 'node:process'
 import jwt from 'jsonwebtoken'
+import { resolveJwtSigningKeyHs256 } from './env'
 import { fail } from './respond'
+
+const JWT_HS256_KEY = resolveJwtSigningKeyHs256()
 
 export interface NhostJwtPayload {
   sub: string
@@ -32,9 +34,8 @@ export function requireAuth(
   }
 
   const token = authHeader.split(' ')[1]
-  const secret = process.env.HASURA_GRAPHQL_JWT_SECRET
 
-  if (!secret) {
+  if (!JWT_HS256_KEY) {
     fail(res, 'Server misconfiguration: JWT secret not set', 500)
     return Promise.resolve(null)
   }
@@ -42,7 +43,7 @@ export function requireAuth(
   return new Promise((resolve) => {
     jwt.verify(
       token,
-      secret,
+      JWT_HS256_KEY,
       { algorithms: ['HS256'] },
       (err, decoded) => {
         if (err) {

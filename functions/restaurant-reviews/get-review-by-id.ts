@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express'
+import { requireAuth, getUserId } from '../_lib/auth'
 import { hasuraQuery } from '../_lib/hasura'
 import { ok, fail } from '../_lib/respond'
 
@@ -29,8 +30,25 @@ export default async (req: Request, res: Response): Promise<void> => {
       return fail(res, 'Failed to fetch review', 500)
     }
 
-    const review = result.data?.restaurant_reviews_by_pk
+    const review = result.data?.restaurant_reviews_by_pk as
+      | { author_id: string; status?: string | null; deleted_at?: string | null; [key: string]: unknown }
+      | null
     if (!review) return fail(res, 'Review not found', 404)
+
+    const isDeleted = Boolean(review.deleted_at)
+    const isApproved = review.status === 'approved'
+
+    if (isDeleted) return fail(res, 'Review not found', 404)
+
+    if (!isApproved) {
+      const payload = await requireAuth(req, res)
+      if (!payload) return
+
+      const authUserId = getUserId(payload)
+      if (review.author_id !== authUserId) {
+        return fail(res, 'Review not found', 404)
+      }
+    }
 
     ok(res, { review })
   } catch (error) {
