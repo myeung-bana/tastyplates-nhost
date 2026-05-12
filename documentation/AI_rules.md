@@ -6,265 +6,237 @@ If a suggestion violates a rule here, reject it.
 
 ---
 
-## 1. Project invariants — never change these
+## 1. Project invariants — never change these casually
 
-- **Runtime:** Node 22. The `package.json` `engines` field and `nhost.toml` `[functions.node] version = 22` must always agree.
-- **Module system:** CommonJS (`"module": "CommonJS"` in `tsconfig.json`). Do not use ESM (`import`/`export`) at the module level in handler files — Nhost's bundler expects CJS.
-- **TypeScript target:** `ES2022`. Do not lower this.
-- **Strict mode:** `"strict": true` in `tsconfig.json`. Never disable it, never add `// @ts-ignore` or `as any` to work around type errors.
-- **JWT algorithm:** `HS256` (symmetric secret from `{{ secrets.HASURA_GRAPHQL_JWT_SECRET }}`). Do not switch to RS256/JWKS without updating `nhost.toml` and the `auth.ts` helper simultaneously.
-- **No `dist/` committed.** Nhost bundles on deploy. `dist/` is gitignored; never commit it.
+- **Runtime:** Node 22. `functions/package.json` `engines.node` and `nhost/nhost.toml` `[functions.node] version = 22` must stay aligned.
+- **Compiler target:** `ES2022`.
+- **Module output:** `CommonJS` from `tsconfig.json`. TypeScript `import` / `export` syntax is fine; the emitted module format must remain CommonJS.
+- **Strict TypeScript:** `"strict": true` stays on. Do not add `// @ts-ignore`, `any`, or loose casts to silence errors.
+- **JWT mode:** `HS256` is the current auth mode in `nhost.toml`. Do not switch algorithms without updating both `nhost.toml` and `functions/_lib/auth.ts`.
+- **No built output in git:** Nhost bundles on deploy. Never commit `dist/`.
+- **Lockfile discipline:** Commit `functions/package-lock.json` with any dependency change so Nhost uses the expected package manager.
 
 ---
 
-## 2. Directory layout — must match exactly
+## 2. Directory layout — route files live at the root
 
-```
+```text
 functions/
 ├── package.json
-├── package-lock.json        ← commit this; Nhost auto-detects npm from it
+├── package-lock.json
 ├── tsconfig.json
 ├── _lib/
-│   ├── auth.ts              ← JWT verification only
-│   ├── respond.ts           ← ok() / fail() only
-│   └── validate.ts          ← Zod validation wrapper only
-├── health.ts                ← liveness probe; never remove
-├── echo.ts                  ← smoke-test; remove before prod
+│   ├── env.ts
+│   ├── hasura.ts
+│   ├── auth.ts
+│   ├── respond.ts
+│   └── validate.ts
+├── health.ts
+├── echo.ts
 └── <domain>/
-    └── <action>.ts          ← one handler per file; see naming rules below
+    └── <action>.ts
 ```
 
 **Rules:**
-- `_lib/` is for shared utilities **only** — no business logic, no Hasura calls, no HTTP calls.
-- Never put handler logic inside `_lib/`. Never import one handler from another.
-- Prefix internal-only directories and files with `_` (e.g., `_lib`). These are **not** exposed as HTTP routes by Nhost.
+- Route files live under `functions/`, and Nhost maps the full relative file path to the HTTP route.
+- Prefix internal-only helpers with `_` so they stay off the public routing surface.
+- `_lib/` is for shared infrastructure and helpers only: env resolution, Hasura client helpers, auth, validation, and common response helpers. Do not hide endpoint-specific business logic there.
+- Never import one route handler from another route handler.
 
 ---
 
 ## 3. Route naming — file path is the URL
 
-Nhost resolves routes directly from file paths under `functions/`:
+Examples:
 
-| File | HTTP route |
-|------|-----------|
-| `health.ts` | `{FUNCTIONS_URL}/v1/health` |
-| `restaurants-v2/get-restaurants.ts` | `{FUNCTIONS_URL}/v1/restaurants-v2/get-restaurants` |
-| `restaurant-reviews/create-review.ts` | `{FUNCTIONS_URL}/v1/restaurant-reviews/create-review` |
+- `health.ts` → `{FUNCTIONS_URL}/v1/health`
+- `restaurants-v2/get-restaurants.ts` → `{FUNCTIONS_URL}/v1/restaurants-v2/get-restaurants`
+- `restaurant-reviews/create-review.ts` → `{FUNCTIONS_URL}/v1/restaurant-reviews/create-review`
 
 **Rules:**
-- Use `kebab-case` for all file and directory names — no camelCase, no underscores in routes.
-- Segment names become URL path segments. Keep them human-readable and consistent with the existing `/api/v1/` shape so migration is a rename at the frontend, not a redesign.
-- One file = one handler = one route. No barrel re-exports for route files.
+- Use `kebab-case` for exposed route files and directories.
+- One file = one default-exported handler = one route.
+- Keep route names close to the existing frontend contract so migrations stay mechanical.
 
 ---
 
 ## 4. Response envelope — always use `ok()` / `fail()`
 
-Every handler must return JSON in one of two shapes using the helpers from `_lib/respond.ts`:
+All handlers return one of these shapes via `functions/_lib/respond.ts`:
 
 ```typescript
-// Success
 { ok: true, data: <T> }
-
-// Error
 { ok: false, error: "<message>", details?: <unknown> }
 ```
 
 **Rules:**
-- Never call `res.json(...)` directly. Always call `ok(res, data)` or `fail(res, message, status)`.
-- Never expose raw Hasura error objects, stack traces, or internal variable names in `error` or `details`.
-- HTTP status codes must be semantically correct:
-  - `200` — success (default)
-  - `201` — resource created
-  - `400` — bad request (malformed input not caught by Zod)
-  - `401` — unauthenticated
-  - `403` — authenticated but not allowed
-  - `422` — validation failed (Zod errors — handled automatically by `validate()`)
-  - `429` — rate limited
-  - `500` — unexpected server error
+- Prefer `ok(res, data, status)` and `fail(res, message, status, details)` over hand-written JSON responses.
+- Never leak secrets, stack traces, raw Hasura error payloads, or internal env names in the response body.
+- Use status codes consistently:
+  - `200` success
+  - `201` created
+  - `400` malformed input
+  - `401` unauthenticated
+  - `403` authenticated but not allowed
+  - `404` resource intentionally hidden or not found
+  - `422` validation failed
+  - `429` rate limited
+  - `500` unexpected server error
 
 ---
 
-## 5. Authentication — `requireAuth` is the only entry point
+## 5. Handler structure — keep the flow obvious
+
+Canonical shape:
 
 ```typescript
-import { requireAuth, getUserId } from '../_lib/auth'
-
-export default async (req: Request, res: Response): Promise<void> => {
-  const payload = await requireAuth(req, res)
-  if (!payload) return   // requireAuth already sent 401; stop here
-  const userId = getUserId(payload)
-  // ...
-}
-```
-
-**Rules:**
-- Never manually decode or inspect `req.headers.authorization`. Always use `requireAuth`.
-- Never trust `user_id` or `author_id` from the **request body or query string** for auth decisions. Always derive the acting user from the verified JWT payload via `getUserId(payload)`.
-- Routes that are read-only and public (e.g., get-restaurants) may skip `requireAuth`. Every mutating route (create, update, delete, follow, like, upload) **must** call `requireAuth` first.
-- `requireAuth` returns `null` and has already sent `401` when it fails. The caller must `return` immediately — never proceed after a `null` payload.
-
----
-
-## 6. Input validation — Zod on every mutation
-
-```typescript
-import { z } from 'zod'
-import { validate } from '../_lib/validate'
-
-const MySchema = z.object({
-  restaurantId: z.string().uuid(),
-  rating: z.number().int().min(1).max(5),
-  body: z.string().min(1).max(2000),
-})
-
-const body = validate(req, res, MySchema)
-if (!body) return   // validate() already sent 422
-```
-
-**Rules:**
-- Every `POST`, `PUT`, `PATCH` handler must validate `req.body` with a named Zod schema before touching any data.
-- Zod schemas must be defined at module scope (not inside the handler) so they are reusable and inspectable.
-- `GET` requests with required query parameters should also validate them — use `z.object({}).parse(req.query)` or `validate()` adapted to `req.query`.
-- Never use `any` in a schema. Use `z.unknown()` if the type is genuinely unknown and handle it explicitly.
-
----
-
-## 7. Handler structure — follow this exact pattern
-
-Every handler must follow this shape:
-
-```typescript
-import type { Request, Response } from 'express'
-import { z } from 'zod'
-import { requireAuth, getUserId } from '../_lib/auth'
-import { validate } from '../_lib/validate'
-import { ok, fail } from '../_lib/respond'
-
-const InputSchema = z.object({ /* ... */ })
-
 export default async (req: Request, res: Response): Promise<void> => {
   try {
-    // 1. Auth (for protected routes)
     const payload = await requireAuth(req, res)
     if (!payload) return
-    const userId = getUserId(payload)
 
-    // 2. Validate input
     const body = validate(req, res, InputSchema)
     if (!body) return
 
-    // 3. Business logic (Hasura calls, etc.)
-
-    // 4. Respond
-    ok(res, { /* ... */ })
+    ok(res, { /* result */ })
   } catch (error) {
-    console.error(`[<domain>/<action>]`, error)
-    res.status(500).json({ ok: false, error: 'Internal server error' })
+    console.error('[domain/action]', error)
+    fail(res, 'Internal server error', 500)
   }
 }
 ```
 
 **Rules:**
-- The export must be `export default` (not named exports). Nhost expects the default export as the handler.
-- Handler must be `async` and return `Promise<void>`.
-- Always wrap the handler body in `try/catch`. The catch block must `console.error` with a `[domain/action]` prefix so logs are searchable in the Nhost dashboard.
-- Catch blocks must **never** call `ok()` — only `fail()` or the raw `res.status(500).json(...)` pattern shown above.
-- Order inside the handler: **auth → validate → logic → respond**. Never reorder.
+- Handlers must be `export default async` and return `Promise<void>`.
+- Wrap handler bodies in `try/catch`.
+- Log failures with a searchable `[domain/action]` prefix.
+- Preserve the order `auth → validate → business logic → respond` for protected mutations.
+- If `requireAuth()` or `validate()` returns `null`, `return` immediately.
 
 ---
 
-## 8. Hasura access — admin secret, server-only
+## 6. Authentication and authorization
+
+Use `requireAuth()` as the only JWT verification entry point.
 
 ```typescript
-const HASURA_ENDPOINT = process.env.HASURA_GRAPHQL_ENDPOINT!
-const HASURA_SECRET   = process.env.HASURA_GRAPHQL_ADMIN_SECRET!
-
-const result = await fetch(HASURA_ENDPOINT, {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'x-hasura-admin-secret': HASURA_SECRET,
-  },
-  body: JSON.stringify({ query: `...`, variables: { ... } }),
-})
+const payload = await requireAuth(req, res)
+if (!payload) return
+const userId = getUserId(payload)
 ```
 
 **Rules:**
-- All Hasura access uses the **admin secret** — never the user's JWT.
-- Never expose `HASURA_GRAPHQL_ADMIN_SECRET` in a response body, log line, or error message.
-- Hasura calls must always check `result.errors` from the GraphQL response and call `fail(res, ...)` if present.
-- GraphQL query/mutation strings must be defined at module scope (not inline in the fetch call) so they are visible and auditable.
-- Never use `NEXT_PUBLIC_*` environment variables. These don't exist in the Nhost Functions runtime.
+- Never manually decode `Authorization` tokens inside a handler.
+- Never trust `user_id`, `author_id`, `follower_id`, or similar request fields for auth decisions. Derive the acting user from the verified JWT.
+- Mutating routes must call `requireAuth()` before touching data.
+- Optional-auth routes may inspect whether a Bearer token exists, but if the header is present it must still pass through `requireAuth()`.
+- Owner-only reads must compare request params to `getUserId(payload)` and return `403` or hidden `404` as appropriate.
+- Admin-only routes must use a dedicated header such as `x-admin-secret` and compare it with `ADMIN_SECRET` from `_lib/env.ts`, not a raw `process.env...` lookup in the handler.
 
 ---
 
-## 9. Environment variables — explicit, never optional in logic
+## 7. Input validation — Zod on all write paths
 
-| Variable | Auto-injected | Required for |
-|---|---|---|
-| `NHOST_SUBDOMAIN` | ✅ by Nhost cloud | JWKS URL (if RS256; not current) |
-| `NHOST_REGION` | ✅ by Nhost cloud | JWKS URL (if RS256; not current) |
-| `HASURA_GRAPHQL_ADMIN_SECRET` | ❌ set in Dashboard → Secrets | All Hasura calls |
-| `HASURA_GRAPHQL_ENDPOINT` | ❌ set in Dashboard → Secrets | All Hasura calls |
-| `HASURA_GRAPHQL_JWT_SECRET` | ❌ set in Dashboard → Secrets | JWT verification (HS256) |
+```typescript
+const body = validate(req, res, InputSchema)
+if (!body) return
+```
 
 **Rules:**
-- Access env vars with `process.env.VAR_NAME`. If the value is required, assert it:
-  ```typescript
-  const secret = process.env.HASURA_GRAPHQL_ADMIN_SECRET
-  if (!secret) { fail(res, 'Server misconfiguration', 500); return }
-  ```
-- Never use `process.env.VAR_NAME ?? 'fallback'` for secrets. A missing secret must be a hard failure.
-- Never commit `.env` files. The `.gitignore` already excludes them. Set secrets in the Nhost Dashboard or pass them via `nhost dev` `.env` for local.
+- Every `POST`, `PUT`, and `PATCH` route validates its JSON body with a named schema at module scope.
+- Required query params should be validated explicitly as well; do not let invalid UUIDs or enum-like values fall through to Hasura.
+- Keep schemas at module scope so they are readable, reusable, and testable.
 
 ---
 
-## 10. Error handling — rules for the catch block
+## 8. Hasura access — use the shared helper
 
-- Log with context: `console.error('[domain/action]', error)`.
-- Never re-throw inside a handler — catch at the top level and respond.
-- Never return stack traces or raw `error.message` from `Error` instances in the response body.
-- If a known, expected error needs a specific status code (e.g., 409 Conflict for duplicate username), handle it **before** the generic catch with an explicit `fail(res, ..., 409)` call.
-- `console.error` is fine for unexpected errors. `console.warn` for expected degraded-path branches (e.g., missing optional data). `console.log` for local debug only — remove before PR.
+Current server-side Hasura access flows through `functions/_lib/hasura.ts`.
 
----
+```typescript
+const result = await hasuraQuery<MyResult>(MY_QUERY, variables)
+if (result.errors?.length) {
+  return fail(res, 'Failed to fetch data', 500)
+}
+```
 
-## 11. Rate limiting (when Upstash Redis is added)
-
-- Rate limits must be checked **after** auth but **before** Hasura calls — fail fast.
-- Rate limit failures must respond with `fail(res, 'Too many requests', 429)`.
-- Rate limits must **degrade gracefully** — if Redis is unavailable, allow the request through. Never hard-fail the route because Redis is down.
-- Sensitive actions requiring rate limits: `create-review`, `create-comment`, `toggle-like`, `follow`, `unfollow`, `toggle-favorite`, `toggle-checkin`, `upload/image`, `upload/batch`.
-
----
-
-## 12. Uploads (when S3 + Sharp are added)
-
-- Image processing (Sharp) and S3 uploads must live in `upload/` — never inline in a review or restaurant creation handler.
-- Never read a file from the filesystem. All file data comes from multipart request body.
-- Accepted formats: JPEG, PNG, WebP, AVIF — reject others with `fail(res, 'Unsupported file type', 415)`.
-- Sharp optimization is applied server-side before upload: AVIF-first, WebP fallback. Never upload unprocessed originals.
-- Never log S3 presigned URLs or upload credentials.
+**Rules:**
+- Do not open-code GraphQL `fetch(...)` calls in handlers when `_lib/hasura.ts` already covers the use case.
+- GraphQL documents belong at module scope, never inline inside the `fetch` call.
+- Always check `result.errors` before using `result.data`.
+- Treat Hasura as server-only infrastructure. Never expose admin credentials in logs, responses, or client-facing code.
+- If the project later needs a user-scoped Hasura client, add it intentionally in `_lib/` and update this doc at the same time.
 
 ---
 
-## 13. What to treat as outdated / never bring back
+## 9. Environment variables — `_lib/env.ts` is the source of truth
 
-- `NEXT_PUBLIC_*` env vars — do not exist in Nhost Functions runtime.
-- `firebase_uuid`, Firebase auth patterns — Nhost/Hasura JWT is the only identity source.
-- Caller-trusted `user_id` in request body for auth — always derive from verified JWT.
-- WordPress API calls or legacy REST endpoints — do not port these.
-- `req.invocationId` — this field existed in the Nhost Functions runtime preview but is not guaranteed; do not rely on it in handler logic.
+Nhost secret naming is easy to get wrong. Use the shared env helper instead of sprinkling `process.env` reads across handlers.
+
+| Secret / config source | Runtime variable used in Functions | Notes |
+|---|---|---|
+| `HASURA_GRAPHQL_ADMIN_SECRET` in Dashboard / `.secrets` | `NHOST_ADMIN_SECRET` | `_lib/env.ts` also falls back to the legacy name |
+| `HASURA_GRAPHQL_JWT_SECRET` in Dashboard / `.secrets` | `NHOST_JWT_SECRET` | Nhost wraps this as JSON; parse the `key` for HS256 |
+| `HASURA_GRAPHQL_ENDPOINT` override | `NHOST_GRAPHQL_URL` preferred | Use injected GraphQL URL when available |
+| `NHOST_SUBDOMAIN`, `NHOST_REGION` | auto-injected | Only used as a final fallback to construct the GraphQL URL |
+
+**Rules:**
+- For shared env access, import from `_lib/env.ts`; do not read `process.env.HASURA_GRAPHQL_ADMIN_SECRET` or `process.env.NHOST_JWT_SECRET` directly in route files.
+- Do not create a `.env` inside `functions/`. Nhost Functions reads:
+  1. system-injected runtime vars,
+  2. `[[global.environment]]` values in `nhost.toml`,
+  3. secrets from Dashboard / repo-root `.secrets`.
+- Local secrets live in the repo-root `.secrets` file, not under `functions/`.
+- `.secrets` must stay gitignored and uncommitted.
+- Missing required secrets should fail loudly at startup, not degrade silently.
 
 ---
 
-## 14. Deployment checklist — before every push
+## 10. What code should never do
 
-- [ ] `npm run build` passes with **zero** TypeScript errors
-- [ ] `package-lock.json` is committed alongside any `package.json` change
-- [ ] No secrets or env values are hardcoded in any source file
-- [ ] Every new handler follows the `auth → validate → logic → respond` structure
-- [ ] Every mutation calls `requireAuth` and derives `userId` from the payload
-- [ ] `nhost.toml` `[functions.node] version = 22` is present and unchanged
-- [ ] `GET /v1/health` returns `200` after deploy before declaring success
+Never reintroduce these patterns:
+
+```typescript
+process.env.HASURA_GRAPHQL_ADMIN_SECRET
+process.env.HASURA_GRAPHQL_JWT_SECRET
+jwt.verify(token, process.env.NHOST_JWT_SECRET!, ...)
+fetch(`https://${sub}.graphql.${region}.nhost.run/v1`, ...)
+require('dotenv').config()
+```
+
+Why they are wrong here:
+
+- The runtime secret names differ from the legacy monolith names.
+- `NHOST_JWT_SECRET` arrives as JSON, not a raw secret string.
+- `NHOST_GRAPHQL_URL` is the preferred endpoint source.
+- `functions/` does not load dotenv files in cloud deploys.
+
+Also do not bring back:
+
+- `NEXT_PUBLIC_*` env access inside Nhost Functions
+- Firebase-derived identities for authorization
+- caller-trusted `user_id` auth logic
+- reliance on `req.invocationId` for correctness
+
+---
+
+## 11. Error handling and logging
+
+- Log unexpected errors with context using `console.error('[domain/action]', error)`.
+- Do not rethrow from a top-level handler after catching.
+- Do not return raw `error.message` values from unexpected exceptions.
+- Handle known conflict / permission / validation cases before the generic catch.
+
+---
+
+## 12. Operational checklist — before every push
+
+- [ ] `npm run build` passes in `functions/`
+- [ ] `package-lock.json` is committed with any dependency change
+- [ ] No secrets are hardcoded in source
+- [ ] New routes follow `auth → validate → logic → respond`
+- [ ] Protected routes derive the acting user from `getUserId(payload)`
+- [ ] `nhost.toml` still pins Node 22 and HS256 intentionally
+- [ ] `.secrets` is not committed
+- [ ] After deploy, `GET /v1/health` succeeds before declaring the release healthy
+- [ ] After auth-related changes, test one protected route such as `echo` or `restaurant-reviews/get-draft-reviews` with a real Bearer token
