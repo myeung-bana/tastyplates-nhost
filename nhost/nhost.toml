@@ -1,11 +1,9 @@
 [global]
 
-[functions.node]
-version = 22
-
 [hasura]
 version = 'v2.48.5-ce'
 adminSecret = '{{ secrets.HASURA_GRAPHQL_ADMIN_SECRET }}'
+webhookSecret = ''
 
 [[hasura.jwtSecrets]]
 type = 'HS256'
@@ -27,6 +25,10 @@ level = 'warn'
 
 [hasura.events]
 httpPoolSize = 100
+
+[functions]
+[functions.node]
+version = 22
 
 [auth]
 version = '0.50.0'
