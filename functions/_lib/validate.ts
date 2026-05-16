@@ -14,8 +14,9 @@ export function validate<T>(
   req: Request,
   res: Response,
   schema: ZodSchema<T>,
+  source: 'body' | 'query' = 'body',
 ): T | null {
-  const result = schema.safeParse(req.body)
+  const result = schema.safeParse(source === 'query' ? req.query : req.body)
   if (!result.success) {
     const issues = (result.error as ZodError).issues.map((i) => ({
       path: i.path.join('.'),

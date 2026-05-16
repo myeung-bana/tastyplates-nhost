@@ -1,41 +1,43 @@
 import type { Request, Response } from 'express'
-import { requireAuth, getUserId } from '../_lib/auth'
-import { hasuraMutation } from '../_lib/hasura'
+import { softDeleteUserProfile, getProfileById } from '../_lib/user-profile'
+import { resolveAuth } from '../_lib/auth-guard'
+import { NHOST_AUTH_URL, NHOST_ADMIN_SECRET } from '../_lib/env'
 import { ok, fail } from '../_lib/respond'
-
-const SOFT_DELETE_USER = `
-  mutation SoftDeleteUser($id: uuid!) {
-    update_restaurant_users_by_pk(pk_columns: { id: $id } _set: { deleted_at: "now()" }) { id deleted_at }
-  }
-`
-
-const HARD_DELETE_USER = `
-  mutation HardDeleteUser($id: uuid!) {
-    delete_restaurant_users_by_pk(id: $id) { id username }
-  }
-`
 
 export default async (req: Request, res: Response): Promise<void> => {
   try {
-    const payload = await requireAuth(req, res)
-    if (!payload) return
+    const auth = await resolveAuth(req, res)
+    if (!auth) return
 
-    const userId = getUserId(payload)
+    const hard = req.query.hard === 'true'
 
-    const url = new URL(req.url, 'http://localhost')
-    const hard = url.searchParams.get('hard') === 'true'
+    const existing = await getProfileById(auth.userId)
+    if (!existing) return fail(res, 'User not found', 404)
 
-    type Result = { update_restaurant_users_by_pk?: unknown; delete_restaurant_users_by_pk?: unknown }
-    const result = await hasuraMutation<Result>(hard ? HARD_DELETE_USER : SOFT_DELETE_USER, { id: userId })
+    if (hard) {
+      const deleteRes = await fetch(`${NHOST_AUTH_URL}/v1/users/${auth.userId}`, {
+        method: 'DELETE',
+        headers: {
+          'x-hasura-admin-secret': NHOST_ADMIN_SECRET,
+        },
+      })
 
-    if (result.errors?.length) {
-      console.error('[restaurant-users/delete-restaurant-user]', result.errors)
-      return fail(res, 'Failed to delete user', 500)
+      if (!deleteRes.ok) {
+        const text = await deleteRes.text().catch(() => '')
+        console.error(
+          '[restaurant-users/delete-restaurant-user] hard delete failed',
+          deleteRes.status,
+          text,
+        )
+        return fail(res, 'Failed to delete account', 500)
+      }
+    } else {
+      await softDeleteUserProfile(auth.userId)
     }
 
-    ok(res, { deleted: true, userId })
+    ok(res, { deleted: true, userId: auth.userId, hard })
   } catch (error) {
     console.error('[restaurant-users/delete-restaurant-user]', error)
-    res.status(500).json({ ok: false, error: 'Internal server error' })
+    fail(res, 'Internal server error', 500)
   }
 }

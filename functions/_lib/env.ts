@@ -45,6 +45,23 @@ function resolveGraphqlUrl(): string {
 export const ADMIN_SECRET = resolveAdminSecret()
 export const GRAPHQL_URL = resolveGraphqlUrl()
 
+/** Alias used by auth admin delete and docs. */
+export const NHOST_ADMIN_SECRET = ADMIN_SECRET
+export const NHOST_GRAPHQL_URL = GRAPHQL_URL
+
+function resolveAuthUrl(): string {
+  const injected = firstSet(process.env.NHOST_AUTH_URL, process.env.NHOST_BACKEND_URL)
+  if (injected) return injected.replace(/\/$/, '')
+  const sub = process.env.NHOST_SUBDOMAIN
+  const region = process.env.NHOST_REGION
+  if (sub && region) return `https://${sub}.auth.${region}.nhost.run`
+  throw new Error(
+    'Nhost Auth URL could not be resolved. Set NHOST_AUTH_URL or NHOST_SUBDOMAIN + NHOST_REGION.',
+  )
+}
+
+export const NHOST_AUTH_URL = resolveAuthUrl()
+
 /**
  * HS256 signing key for `jwt.verify`. Cloud exposes JSON in `NHOST_JWT_SECRET`;
  * raw `HASURA_GRAPHQL_JWT_SECRET` still works locally / legacy setups.

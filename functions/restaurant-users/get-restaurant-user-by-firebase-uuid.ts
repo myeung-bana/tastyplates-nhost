@@ -1,5 +1,10 @@
 import type { Request, Response } from 'express'
+import { fail } from '../_lib/respond'
 
 export default (_req: Request, res: Response): void => {
-  res.status(410).json({ ok: false, error: 'Firebase UUID lookup is deprecated. Use UUID or username instead.' })
+  fail(
+    res,
+    'Removed. Use get-restaurant-user-by-id or get-restaurant-user-by-username instead.',
+    410,
+  )
 }

@@ -1,0 +1,16 @@
+# Phase E-3: Apply via Hasura Console or metadata apply.
+# Enables nested author { user_id username user { displayName avatarUrl } } on reviews.
+
+table:
+  name: restaurant_reviews
+  schema: public
+
+object_relationships:
+  - name: author
+    using:
+      manual_configuration:
+        remote_table:
+          schema: public
+          name: user_profiles
+        column_mapping:
+          author_id: user_id

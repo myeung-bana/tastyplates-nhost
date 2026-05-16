@@ -74,6 +74,6 @@ export default async (req: Request, res: Response): Promise<void> => {
     ok(res, { reviews, meta: { total, limit, offset, hasMore: offset + reviews.length < total } })
   } catch (error) {
     console.error('[restaurant-reviews/get-following-feed]', error)
-    res.status(500).json({ ok: false, error: 'Internal server error' })
+    fail(res, 'Internal server error', 500)
   }
 }

@@ -319,8 +319,9 @@ Legend for `Auth`: `None`, `Bearer`, `Optional Bearer`, `Admin header`
 
 | Path | Typical method | Auth | Description |
 |---|---|---|---|
-| `restaurant-users/create-restaurant-user` | POST | None | Creates a profile row; consider hardening if abuse becomes a concern |
-| `restaurant-users/update-restaurant-user` | POST | Bearer | Update current user profile |
+| `restaurant-users/create-restaurant-user` | POST | Bearer | Creates `user_profiles` for the authenticated user (JWT `user_id` only) |
+| `users/me` | GET | Bearer | Current user profile from JWT (`user_profiles` + `auth.users`) |
+| `restaurant-users/update-restaurant-user` | POST | Bearer | Update current user profile (`user_profiles` + `auth.users` avatar/locale/displayName) |
 | `restaurant-users/delete-restaurant-user` | POST | Bearer | Delete current user; `hard=true` optional |
 | `restaurant-users/follow` | POST | Bearer | Follow another user |
 | `restaurant-users/unfollow` | POST | Bearer | Unfollow another user |
@@ -328,10 +329,10 @@ Legend for `Auth`: `None`, `Bearer`, `Optional Bearer`, `Admin header`
 | `restaurant-users/toggle-favorite` | GET / POST | Bearer | Read or toggle favorite state |
 | `restaurant-users/toggle-checkin` | GET / POST | Bearer | Read or toggle check-in state |
 | `restaurant-users/suggested` | GET | Optional Bearer | Suggestions; current user excluded if Bearer is present |
-| `restaurant-users/get-restaurant-users` | GET | None | List and search users |
-| `restaurant-users/get-restaurant-user-by-id` | GET | None | Fetch one user by UUID |
-| `restaurant-users/get-restaurant-user-by-username` | GET | None | Fetch one user by username |
-| `restaurant-users/get-restaurant-user-by-firebase-uuid` | GET | None | Deprecated stub |
+| `restaurant-users/get-restaurant-users` | GET | None | List and search users (`user_profiles` + nested `auth.users`) |
+| `restaurant-users/get-restaurant-user-by-id` | GET | None | Fetch one user by UUID (`user_profiles`) |
+| `restaurant-users/get-restaurant-user-by-username` | GET | None | Fetch one user by username (`user_profiles`) |
+| `restaurant-users/get-restaurant-user-by-firebase-uuid` | GET | None | Returns `410 Gone`; use id or username routes |
 | `restaurant-users/check-username` | GET | None | Username availability |
 | `restaurant-users/get-followers-list` | GET | None | Followers list |
 | `restaurant-users/get-following-list` | GET | None | Following list |
