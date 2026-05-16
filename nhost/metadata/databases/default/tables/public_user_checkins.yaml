@@ -1,0 +1,44 @@
+table:
+  name: user_checkins
+  schema: public
+
+select_permissions:
+  - role: user
+    permission:
+      columns: "*"
+      filter:
+        user_id:
+          _eq: X-Hasura-User-Id
+      allow_aggregations: true
+
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+
+insert_permissions:
+  - role: user
+    permission:
+      columns:
+        - user_id
+        - restaurant_uuid
+      check:
+        user_id:
+          _eq: X-Hasura-User-Id
+
+  - role: admin
+    permission:
+      columns: "*"
+      check: {}
+
+delete_permissions:
+  - role: user
+    permission:
+      filter:
+        user_id:
+          _eq: X-Hasura-User-Id
+
+  - role: admin
+    permission:
+      filter: {}

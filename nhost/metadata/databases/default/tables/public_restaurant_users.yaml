@@ -1,0 +1,96 @@
+table:
+  name: restaurant_users
+  schema: public
+
+select_permissions:
+  - role: public
+    permission:
+      columns:
+        - id
+        - username
+        - display_name
+        - profile_image
+        - about_me
+        - palates
+        - review_count
+        - follower_count
+        - onboarding_complete
+        - created_at
+      filter:
+        deleted_at:
+          _is_null: true
+      allow_aggregations: true
+
+  - role: user
+    permission:
+      columns:
+        - id
+        - username
+        - email
+        - display_name
+        - profile_image
+        - about_me
+        - palates
+        - language_preference
+        - onboarding_complete
+        - review_count
+        - follower_count
+        - birthdate
+        - gender
+        - pronoun
+        - address
+        - zip_code
+        - latitude
+        - longitude
+        - created_at
+        - updated_at
+        - deleted_at
+      filter:
+        deleted_at:
+          _is_null: true
+      allow_aggregations: true
+
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+
+insert_permissions:
+  - role: admin
+    permission:
+      columns: "*"
+      check: {}
+
+update_permissions:
+  # Users can update their own profile
+  - role: user
+    permission:
+      columns:
+        - username
+        - display_name
+        - profile_image
+        - about_me
+        - palates
+        - language_preference
+        - onboarding_complete
+        - birthdate
+        - gender
+        - pronoun
+        - address
+        - zip_code
+        - latitude
+        - longitude
+      filter:
+        id:
+          _eq: X-Hasura-User-Id
+
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+
+delete_permissions:
+  - role: admin
+    permission:
+      filter: {}

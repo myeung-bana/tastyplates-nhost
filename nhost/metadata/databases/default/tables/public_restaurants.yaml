@@ -1,0 +1,89 @@
+table:
+  name: restaurants
+  schema: public
+
+# Restaurants are admin-curated: public and users can read, only admin can write.
+select_permissions:
+  - role: public
+    permission:
+      columns:
+        - id
+        - uuid
+        - title
+        - slug
+        - status
+        - listing_street
+        - featured_image_url
+        - average_rating
+        - ratings_count
+        - latitude
+        - longitude
+        - address
+        - cuisines
+        - palates
+        - categories
+        - price_range_id
+        - is_main_location
+        - place_id
+        - phone
+        - menu_url
+        - created_at
+        - updated_at
+      filter:
+        status:
+          _eq: publish
+      allow_aggregations: true
+
+  - role: user
+    permission:
+      columns:
+        - id
+        - uuid
+        - title
+        - slug
+        - status
+        - listing_street
+        - featured_image_url
+        - average_rating
+        - ratings_count
+        - latitude
+        - longitude
+        - address
+        - cuisines
+        - palates
+        - categories
+        - price_range_id
+        - is_main_location
+        - place_id
+        - phone
+        - menu_url
+        - created_at
+        - updated_at
+      filter:
+        status:
+          _eq: publish
+      allow_aggregations: true
+
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+
+# Only admin can insert/update/delete restaurants
+insert_permissions:
+  - role: admin
+    permission:
+      columns: "*"
+      check: {}
+
+update_permissions:
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+
+delete_permissions:
+  - role: admin
+    permission:
+      filter: {}

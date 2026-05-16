@@ -1,0 +1,63 @@
+table:
+  name: restaurant_cuisine_rating_summary
+  schema: public
+
+select_permissions:
+  - role: public
+    permission:
+      columns:
+        - restaurant_id
+        - cuisine_id
+        - search_review_count
+        - search_rating_sum
+        - search_rating_avg
+        - search_rating_weighted
+        - authentic_review_count
+        - authentic_rating_sum
+        - authentic_rating_avg
+        - authentic_rating_weighted
+        - review_version
+        - updated_at
+      filter: {}
+      allow_aggregations: true
+
+  - role: user
+    permission:
+      columns:
+        - restaurant_id
+        - cuisine_id
+        - search_review_count
+        - search_rating_sum
+        - search_rating_avg
+        - search_rating_weighted
+        - authentic_review_count
+        - authentic_rating_sum
+        - authentic_rating_avg
+        - authentic_rating_weighted
+        - review_version
+        - updated_at
+      filter: {}
+      allow_aggregations: true
+
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+
+insert_permissions:
+  - role: admin
+    permission:
+      columns: "*"
+      check: {}
+
+update_permissions:
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+
+delete_permissions:
+  - role: admin
+    permission:
+      filter: {}
