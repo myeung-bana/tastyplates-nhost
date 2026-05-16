@@ -1,0 +1,58 @@
+table:
+  name: restaurant_user_follows
+  schema: public
+
+select_permissions:
+  - role: public
+    permission:
+      columns:
+        - id
+        - follower_id
+        - user_id
+        - created_at
+      filter: {}
+      allow_aggregations: true
+
+  - role: user
+    permission:
+      columns:
+        - id
+        - follower_id
+        - user_id
+        - created_at
+      filter: {}
+      allow_aggregations: true
+
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+
+insert_permissions:
+  # Users can follow others (follower_id must be themselves)
+  - role: user
+    permission:
+      columns:
+        - follower_id
+        - user_id
+      check:
+        follower_id:
+          _eq: X-Hasura-User-Id
+
+  - role: admin
+    permission:
+      columns: "*"
+      check: {}
+
+delete_permissions:
+  # Users can only unfollow their own follows
+  - role: user
+    permission:
+      filter:
+        follower_id:
+          _eq: X-Hasura-User-Id
+
+  - role: admin
+    permission:
+      filter: {}

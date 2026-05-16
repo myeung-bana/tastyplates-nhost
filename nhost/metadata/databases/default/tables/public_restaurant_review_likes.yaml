@@ -1,0 +1,58 @@
+table:
+  name: restaurant_review_likes
+  schema: public
+
+select_permissions:
+  - role: public
+    permission:
+      columns:
+        - id
+        - review_id
+        - user_id
+        - created_at
+      filter: {}
+      allow_aggregations: true
+
+  - role: user
+    permission:
+      columns:
+        - id
+        - review_id
+        - user_id
+        - created_at
+      filter: {}
+      allow_aggregations: true
+
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+
+insert_permissions:
+  # Users can like reviews (user_id must be themselves)
+  - role: user
+    permission:
+      columns:
+        - review_id
+        - user_id
+      check:
+        user_id:
+          _eq: X-Hasura-User-Id
+
+  - role: admin
+    permission:
+      columns: "*"
+      check: {}
+
+delete_permissions:
+  # Users can only unlike their own likes
+  - role: user
+    permission:
+      filter:
+        user_id:
+          _eq: X-Hasura-User-Id
+
+  - role: admin
+    permission:
+      filter: {}
