@@ -1,8 +1,0 @@
-table:
-  name: featured_restaurants
-  schema: public
-
-object_relationships:
-  - name: restaurant
-    using:
-      foreign_key_constraint_on: restaurant_id
