@@ -36,18 +36,13 @@ export default async (req: Request, res: Response): Promise<void> => {
     if (!body) return
 
     type CreateResult = { insert_restaurant_reviews_one: unknown }
-    const result = await hasuraMutation<CreateResult>(CREATE_COMMENT, {
+    const data = await hasuraMutation<CreateResult>(CREATE_COMMENT, {
       object: { ...body, author_id: authorId },
     })
 
-    if (result.errors?.length) {
-      console.error('[restaurant-reviews/create-comment]', result.errors)
-      return fail(res, 'Failed to create comment', 500)
-    }
-
     await hasuraMutation(INCREMENT_REPLIES_COUNT, { id: body.parent_review_id })
 
-    ok(res, { comment: result.data?.insert_restaurant_reviews_one }, 201)
+    ok(res, { comment: data.insert_restaurant_reviews_one }, 201)
   } catch (error) {
     console.error('[restaurant-reviews/create-comment]', error)
     res.status(500).json({ ok: false, error: 'Internal server error' })

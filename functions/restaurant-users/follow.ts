@@ -25,12 +25,7 @@ export default async (req: Request, res: Response): Promise<void> => {
     if (!UUID_REGEX.test(user_id)) return fail(res, 'Invalid UUID format', 400)
 
     type Result = { insert_restaurant_user_follows_one: unknown }
-    const result = await hasuraMutation<Result>(FOLLOW_USER, { followerId, userId: user_id })
-
-    if (result.errors?.length) {
-      console.error('[restaurant-users/follow]', result.errors)
-      return fail(res, 'Failed to follow user', 500)
-    }
+    await hasuraMutation<Result>(FOLLOW_USER, { followerId, userId: user_id })
 
     ok(res, { followed: true })
   } catch (error) {

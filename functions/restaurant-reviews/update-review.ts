@@ -56,14 +56,9 @@ export default async (req: Request, res: Response): Promise<void> => {
     const { id, ...changes } = body
 
     type UpdateResult = { update_restaurant_reviews_by_pk: unknown }
-    const result = await hasuraMutation<UpdateResult>(UPDATE_REVIEW, { id, changes })
+    const data = await hasuraMutation<UpdateResult>(UPDATE_REVIEW, { id, changes })
 
-    if (result.errors?.length) {
-      console.error('[restaurant-reviews/update-review]', result.errors)
-      return fail(res, 'Failed to update review', 500)
-    }
-
-    ok(res, { review: result.data?.update_restaurant_reviews_by_pk })
+    ok(res, { review: data.update_restaurant_reviews_by_pk })
   } catch (error) {
     console.error('[restaurant-reviews/update-review]', error)
     res.status(500).json({ ok: false, error: 'Internal server error' })

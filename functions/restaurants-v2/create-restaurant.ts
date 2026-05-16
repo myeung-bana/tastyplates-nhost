@@ -39,14 +39,9 @@ export default async (req: Request, res: Response): Promise<void> => {
     if (!body) return
 
     type Result = { insert_restaurants_one: unknown }
-    const result = await hasuraMutation<Result>(CREATE_RESTAURANT, { object: body })
+    const data = await hasuraMutation<Result>(CREATE_RESTAURANT, { object: body })
 
-    if (result.errors?.length) {
-      console.error('[restaurants-v2/create-restaurant]', result.errors)
-      return fail(res, 'Failed to create restaurant', 500)
-    }
-
-    ok(res, { restaurant: result.data?.insert_restaurants_one }, 201)
+    ok(res, { restaurant: data.insert_restaurants_one }, 201)
   } catch (error) {
     console.error('[restaurants-v2/create-restaurant]', error)
     res.status(500).json({ ok: false, error: 'Internal server error' })

@@ -47,12 +47,7 @@ export default async (req: Request, res: Response): Promise<void> => {
       offset,
     })
 
-    if (followsResult.errors?.length) {
-      console.error('[restaurant-users/get-followers-list]', followsResult.errors)
-      return fail(res, 'Failed to fetch followers', 500)
-    }
-
-    const follows = followsResult.data?.restaurant_user_follows ?? []
+    const follows = followsResult.restaurant_user_follows ?? []
     const followerIds = follows.map((f) => f.follower_id)
 
     if (followerIds.length === 0) return ok(res, { followers: [] })

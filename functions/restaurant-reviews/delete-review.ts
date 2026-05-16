@@ -45,12 +45,7 @@ export default async (req: Request, res: Response): Promise<void> => {
     if (review.author_id !== userId) return fail(res, 'Forbidden', 403)
 
     type DeleteResult = { update_restaurant_reviews_by_pk: unknown }
-    const result = await hasuraMutation<DeleteResult>(DELETE_REVIEW, { id })
-
-    if (result.errors?.length) {
-      console.error('[restaurant-reviews/delete-review]', result.errors)
-      return fail(res, 'Failed to delete review', 500)
-    }
+    await hasuraMutation<DeleteResult>(DELETE_REVIEW, { id })
 
     ok(res, { deleted: true, id })
   } catch (error) {

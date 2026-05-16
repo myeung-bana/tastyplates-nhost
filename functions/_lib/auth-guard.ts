@@ -1,10 +1,10 @@
 import type { Request, Response } from 'express'
 import jwt from 'jsonwebtoken'
 import { requireAuth, getUserId, type NhostJwtPayload } from './auth'
-import { resolveJwtSigningKeyHs256 } from './env'
+import { resolveJwtVerifyOptions } from './env'
 import { fail } from './respond'
 
-const JWT_HS256_KEY = resolveJwtSigningKeyHs256()
+const JWT_VERIFY = resolveJwtVerifyOptions()
 
 export interface AuthContext {
   payload: NhostJwtPayload
@@ -44,10 +44,12 @@ export async function resolveOptionalAuth(
   if (!req.headers.authorization?.startsWith('Bearer ')) return null
 
   const token = req.headers.authorization.split(' ')[1]
-  if (!token || !JWT_HS256_KEY) return null
+  if (!token || !JWT_VERIFY) return null
 
   try {
-    const decoded = jwt.verify(token, JWT_HS256_KEY, { algorithms: ['HS256'] }) as NhostJwtPayload
+    const decoded = jwt.verify(token, JWT_VERIFY.secret, {
+      algorithms: JWT_VERIFY.algorithms,
+    }) as NhostJwtPayload
     return { payload: decoded, userId: getUserId(decoded) }
   } catch {
     return null

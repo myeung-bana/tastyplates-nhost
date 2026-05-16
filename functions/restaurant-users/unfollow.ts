@@ -25,12 +25,7 @@ export default async (req: Request, res: Response): Promise<void> => {
     if (!UUID_REGEX.test(user_id)) return fail(res, 'Invalid UUID format', 400)
 
     type Result = { delete_restaurant_user_follows: { affected_rows: number; returning: Array<{ id: string }> } }
-    const result = await hasuraMutation<Result>(UNFOLLOW_USER, { followerId, userId: user_id })
-
-    if (result.errors?.length) {
-      console.error('[restaurant-users/unfollow]', result.errors)
-      return fail(res, 'Failed to unfollow user', 500)
-    }
+    await hasuraMutation<Result>(UNFOLLOW_USER, { followerId, userId: user_id })
 
     ok(res, { unfollowed: true })
   } catch (error) {

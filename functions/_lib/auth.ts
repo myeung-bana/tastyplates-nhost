@@ -1,9 +1,9 @@
 import type { Request, Response } from 'express'
 import jwt from 'jsonwebtoken'
-import { resolveJwtSigningKeyHs256 } from './env'
+import { resolveJwtVerifyOptions } from './env'
 import { fail } from './respond'
 
-const JWT_HS256_KEY = resolveJwtSigningKeyHs256()
+const JWT_VERIFY = resolveJwtVerifyOptions()
 
 export interface NhostJwtPayload {
   sub: string
@@ -17,10 +17,8 @@ export interface NhostJwtPayload {
 }
 
 /**
- * Extracts and verifies the Bearer JWT from the Authorization header using
- * the HS256 symmetric secret configured in nhost.toml.
- *
- * Sends 401 and returns null on any failure — callers just `if (!payload) return`.
+ * Extracts and verifies the Bearer JWT from the Authorization header.
+ * JWT secret/`algorithms` per documentation/correction.md Fix 7 (parsed `NHOST_JWT_SECRET`).
  */
 export function requireAuth(
   req: Request,
@@ -35,7 +33,7 @@ export function requireAuth(
 
   const token = authHeader.split(' ')[1]
 
-  if (!JWT_HS256_KEY) {
+  if (!JWT_VERIFY) {
     fail(res, 'Server misconfiguration: JWT secret not set', 500)
     return Promise.resolve(null)
   }
@@ -43,8 +41,8 @@ export function requireAuth(
   return new Promise((resolve) => {
     jwt.verify(
       token,
-      JWT_HS256_KEY,
-      { algorithms: ['HS256'] },
+      JWT_VERIFY.secret,
+      { algorithms: JWT_VERIFY.algorithms },
       (err, decoded) => {
         if (err) {
           fail(res, `Unauthorized: ${err.message}`, 401)
