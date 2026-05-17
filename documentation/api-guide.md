@@ -355,8 +355,24 @@ Legend for `Auth`: `None`, `Bearer`, `Optional Bearer`, `Admin header`
 | Path | Typical method | Auth | Description |
 |---|---|---|---|
 | `articles/get-articles` | GET | None | List with filters and pagination |
-| `articles/get-article-by-slug` | GET | None | Query `slug` |
-| `articles/get-article-by-id` | GET | None | Query `id` |
+| `articles/get-article-by-slug` | GET | None | Query `slug`; **`published`** only. Tries **detail** GraphQL (associations + author); on Hasura error falls back to **simple** (no associations). Uses **`_ilike`** only when slug has no `_`/`%`. Response: **`data.article`** + **`data.articleMeta.restaurantEnrichment`** (`skipped` \| `ok` \| `partial` \| `failed`). Associations merged with batch **`restaurants`** incl. **`content`**. |
+| `articles/get-article-by-id` | GET | None | Query `id` (integer); **published + not deleted** only (same as slug). **`author_profile`** + associations + **`articleMeta`**. Unpublished/draft/removed → **404**. |
+
+**Article detail response shape** (`ok: true`):
+
+```json
+{
+  "ok": true,
+  "data": {
+    "article": { "...": "article fields + article_restaurant_associations[].restaurant" },
+    "articleMeta": {
+      "restaurantEnrichment": "skipped"
+    }
+  }
+}
+```
+
+- **`restaurantEnrichment`:** `skipped` — no associations or nothing to batch; `ok` — every `restaurant_id` resolved to a row; `partial` — batch ran but some IDs missing or unresolved; **`failed`** — batch GraphQL error (associations returned without merged `restaurant` objects).
 
 ### 8.9 Admin and monitoring
 
