@@ -9,6 +9,16 @@ const GET_FOLLOWING_IDS = `
   }
 `
 
+const GET_RESTAURANTS_BY_UUIDS = `
+  query GetRestaurantsByUuidsForFollowingFeed($uuids: [uuid!]!) {
+    restaurants(where: { uuid: { _in: $uuids } }) {
+      uuid
+      title
+      slug
+    }
+  }
+`
+
 const GET_FOLLOWING_FEED = `
   query GetFollowingFeed($authorIds: [uuid!]!, $limit: Int, $offset: Int) {
     restaurant_reviews(
@@ -18,6 +28,7 @@ const GET_FOLLOWING_FEED = `
     ) {
       id title content rating images palates hashtags mentions recognitions
       likes_count replies_count status created_at published_at author_id restaurant_uuid
+      AuthorProfile { user_id username palates user { avatarUrl email displayName } }
     }
     restaurant_reviews_aggregate(
       where: { author_id: { _in: $authorIds } deleted_at: { _is_null: true } parent_review_id: { _is_null: true } status: { _eq: "approved" } }
@@ -68,8 +79,37 @@ export default async (req: Request, res: Response): Promise<void> => {
       return fail(res, 'Failed to fetch feed', 500)
     }
 
-    const reviews = result.data?.restaurant_reviews ?? []
+    const reviewsRaw = result.data?.restaurant_reviews ?? []
     const total = result.data?.restaurant_reviews_aggregate.aggregate.count ?? 0
+
+    type ReviewWithUuid = { restaurant_uuid: string }
+    const uuids = [
+      ...new Set(
+        (reviewsRaw as ReviewWithUuid[])
+          .map((r) => r.restaurant_uuid)
+          .filter((id): id is string => typeof id === 'string' && UUID_REGEX.test(id)),
+      ),
+    ]
+
+    const restaurantMap = new Map<string, { uuid: string; title: string | null; slug: string | null }>()
+    if (uuids.length > 0) {
+      type RestaurantsResult = {
+        restaurants: Array<{ uuid: string; title: string | null; slug: string | null }>
+      }
+      const restResult = await hasuraQuery<RestaurantsResult>(GET_RESTAURANTS_BY_UUIDS, { uuids })
+      if (restResult.errors?.length) {
+        console.error('[restaurant-reviews/get-following-feed]', restResult.errors)
+        return fail(res, 'Failed to fetch restaurant details', 500)
+      }
+      for (const r of restResult.data?.restaurants ?? []) {
+        restaurantMap.set(r.uuid, r)
+      }
+    }
+
+    const reviews = (reviewsRaw as Array<ReviewWithUuid & Record<string, unknown>>).map((r) => ({
+      ...r,
+      restaurant: restaurantMap.get(r.restaurant_uuid) ?? null,
+    }))
 
     ok(res, { reviews, meta: { total, limit, offset, hasMore: offset + reviews.length < total } })
   } catch (error) {

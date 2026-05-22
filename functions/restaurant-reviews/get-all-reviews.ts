@@ -11,7 +11,7 @@ const GET_ALL_REVIEWS = `
     ) {
       id author_id content created_at hashtags images is_featured is_pinned likes_count mentions
       palates rating recognitions restaurant_uuid status title updated_at views_count published_at replies_count
-      AuthorProfile { user_id username palates user { avatarUrl email } }
+      AuthorProfile { user_id username palates user { avatarUrl email displayName } }
     }
     restaurant_reviews_aggregate(
       where: { deleted_at: { _is_null: true } parent_review_id: { _is_null: true } status: { _eq: "approved" } }
@@ -31,7 +31,7 @@ const GET_ALL_REVIEWS_CURSOR = `
     ) {
       id author_id content created_at hashtags images is_featured is_pinned likes_count mentions
       palates rating recognitions restaurant_uuid status title updated_at views_count published_at replies_count
-      AuthorProfile { user_id username palates user { avatarUrl email } }
+      AuthorProfile { user_id username palates user { avatarUrl email displayName } }
     }
     restaurant_reviews_aggregate(
       where: { deleted_at: { _is_null: true } parent_review_id: { _is_null: true } status: { _eq: "approved" } }
