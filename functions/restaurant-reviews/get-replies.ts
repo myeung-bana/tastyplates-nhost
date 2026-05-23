@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express'
 import { hasuraQuery } from '../_lib/hasura'
+import { enrichReviewRows, isValidUuid } from '../_lib/review-enrichment'
 import { ok, fail } from '../_lib/respond'
 
 const GET_REVIEW_REPLIES = `
@@ -10,15 +11,13 @@ const GET_REVIEW_REPLIES = `
       limit: $limit offset: $offset
     ) {
       id content likes_count created_at updated_at author_id
-      AuthorProfile { user_id username user { avatarUrl email } }
+      AuthorProfile { user_id username palates user { avatarUrl email displayName } }
     }
     restaurant_reviews_aggregate(
       where: { parent_review_id: { _eq: $parentReviewId } deleted_at: { _is_null: true } status: { _eq: "approved" } }
     ) { aggregate { count } }
   }
 `
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export default async (req: Request, res: Response): Promise<void> => {
   try {
@@ -28,10 +27,10 @@ export default async (req: Request, res: Response): Promise<void> => {
     const offset = parseInt(url.searchParams.get('offset') ?? '0') || 0
 
     if (!reviewId) return fail(res, 'Missing required param: review_id', 400)
-    if (!UUID_REGEX.test(reviewId)) return fail(res, 'Invalid UUID format', 400)
+    if (!isValidUuid(reviewId)) return fail(res, 'Invalid UUID format', 400)
 
     type Result = {
-      restaurant_reviews: unknown[]
+      restaurant_reviews: Array<Record<string, unknown>>
       restaurant_reviews_aggregate: { aggregate: { count: number } }
     }
 
@@ -46,8 +45,10 @@ export default async (req: Request, res: Response): Promise<void> => {
       return fail(res, 'Failed to fetch replies', 500)
     }
 
-    const replies = result.data?.restaurant_reviews ?? []
+    const repliesRaw = result.data?.restaurant_reviews ?? []
     const total = result.data?.restaurant_reviews_aggregate.aggregate.count ?? 0
+
+    const replies = await enrichReviewRows(repliesRaw)
 
     ok(res, { replies, meta: { total, limit, offset, hasMore: offset + replies.length < total } })
   } catch (error) {

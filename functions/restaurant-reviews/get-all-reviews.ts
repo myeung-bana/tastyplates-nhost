@@ -1,6 +1,11 @@
 import type { Request, Response } from 'express'
 import { hasuraQuery } from '../_lib/hasura'
+import { enrichReviewRows } from '../_lib/review-enrichment'
 import { ok, fail } from '../_lib/respond'
+
+const AUTHOR_NESTED = `
+  AuthorProfile { user_id username palates user { avatarUrl email displayName } }
+`
 
 const GET_ALL_REVIEWS = `
   query GetAllReviews($limit: Int, $offset: Int) {
@@ -11,7 +16,7 @@ const GET_ALL_REVIEWS = `
     ) {
       id author_id content created_at hashtags images is_featured is_pinned likes_count mentions
       palates rating recognitions restaurant_uuid status title updated_at views_count published_at replies_count
-      AuthorProfile { user_id username palates user { avatarUrl email displayName } }
+      ${AUTHOR_NESTED}
     }
     restaurant_reviews_aggregate(
       where: { deleted_at: { _is_null: true } parent_review_id: { _is_null: true } status: { _eq: "approved" } }
@@ -31,7 +36,7 @@ const GET_ALL_REVIEWS_CURSOR = `
     ) {
       id author_id content created_at hashtags images is_featured is_pinned likes_count mentions
       palates rating recognitions restaurant_uuid status title updated_at views_count published_at replies_count
-      AuthorProfile { user_id username palates user { avatarUrl email displayName } }
+      ${AUTHOR_NESTED}
     }
     restaurant_reviews_aggregate(
       where: { deleted_at: { _is_null: true } parent_review_id: { _is_null: true } status: { _eq: "approved" } }
@@ -78,11 +83,15 @@ export default async (req: Request, res: Response): Promise<void> => {
       return fail(res, 'Failed to fetch reviews', 500)
     }
 
-    const reviews = result.data?.restaurant_reviews ?? []
+    const reviewsRaw = (result.data?.restaurant_reviews ?? []) as Array<
+      Record<string, unknown> & { id: string; created_at: string }
+    >
     const total = result.data?.restaurant_reviews_aggregate.aggregate.count ?? 0
 
+    const reviews = await enrichReviewRows(reviewsRaw)
+
     const lastItem = reviews[reviews.length - 1]
-    const nextCursor = lastItem ? encodeReviewCursor(lastItem.created_at, lastItem.id) : null
+    const nextCursor = lastItem ? encodeReviewCursor(String(lastItem.created_at), String(lastItem.id)) : null
     const hasMore = cursor ? reviews.length === limit : offset + reviews.length < total
 
     ok(res, { reviews, meta: { total, limit, cursor: nextCursor, hasMore } })

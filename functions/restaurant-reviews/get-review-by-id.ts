@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express'
 import { requireAuth, getUserId } from '../_lib/auth'
 import { hasuraQuery } from '../_lib/hasura'
+import { enrichReviewRow, isValidUuid } from '../_lib/review-enrichment'
 import { ok, fail } from '../_lib/respond'
 
 const GET_REVIEW_BY_ID = `
@@ -8,11 +9,10 @@ const GET_REVIEW_BY_ID = `
     restaurant_reviews_by_pk(id: $id) {
       id restaurant_uuid author_id parent_review_id title content rating images palates hashtags mentions
       recognitions likes_count replies_count status is_pinned is_featured created_at updated_at published_at deleted_at
+      AuthorProfile { user_id username palates user { avatarUrl email displayName } }
     }
   }
 `
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export default async (req: Request, res: Response): Promise<void> => {
   try {
@@ -20,9 +20,9 @@ export default async (req: Request, res: Response): Promise<void> => {
     const id = url.searchParams.get('id')
 
     if (!id) return fail(res, 'Missing required param: id', 400)
-    if (!UUID_REGEX.test(id)) return fail(res, 'Invalid UUID format', 400)
+    if (!isValidUuid(id)) return fail(res, 'Invalid UUID format', 400)
 
-    type Result = { restaurant_reviews_by_pk: unknown | null }
+    type Result = { restaurant_reviews_by_pk: Record<string, unknown> | null }
     const result = await hasuraQuery<Result>(GET_REVIEW_BY_ID, { id })
 
     if (result.errors?.length) {
@@ -30,13 +30,11 @@ export default async (req: Request, res: Response): Promise<void> => {
       return fail(res, 'Failed to fetch review', 500)
     }
 
-    const review = result.data?.restaurant_reviews_by_pk as
-      | { author_id: string; status?: string | null; deleted_at?: string | null; [key: string]: unknown }
-      | null
-    if (!review) return fail(res, 'Review not found', 404)
+    const reviewRaw = result.data?.restaurant_reviews_by_pk
+    if (!reviewRaw) return fail(res, 'Review not found', 404)
 
-    const isDeleted = Boolean(review.deleted_at)
-    const isApproved = review.status === 'approved'
+    const isDeleted = Boolean(reviewRaw.deleted_at)
+    const isApproved = reviewRaw.status === 'approved'
 
     if (isDeleted) return fail(res, 'Review not found', 404)
 
@@ -45,10 +43,12 @@ export default async (req: Request, res: Response): Promise<void> => {
       if (!payload) return
 
       const authUserId = getUserId(payload)
-      if (review.author_id !== authUserId) {
+      if (reviewRaw.author_id !== authUserId) {
         return fail(res, 'Review not found', 404)
       }
     }
+
+    const review = await enrichReviewRow(reviewRaw, { restaurants: true })
 
     ok(res, { review })
   } catch (error) {

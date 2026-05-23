@@ -1,7 +1,12 @@
 import type { Request, Response } from 'express'
 import { requireAuth, getUserId } from '../_lib/auth'
 import { hasuraQuery } from '../_lib/hasura'
+import { enrichReviewRows, isValidUuid } from '../_lib/review-enrichment'
 import { ok, fail } from '../_lib/respond'
+
+const AUTHOR_NESTED = `
+  AuthorProfile { user_id username palates user { avatarUrl email displayName } }
+`
 
 const GET_ALL_USER_REVIEWS = `
   query GetUserReviews($authorId: uuid!, $limit: Int, $offset: Int) {
@@ -12,7 +17,7 @@ const GET_ALL_USER_REVIEWS = `
     ) {
       id title content rating images palates hashtags likes_count replies_count status
       created_at published_at author_id restaurant_uuid
-      AuthorProfile { user_id username palates user { avatarUrl email } }
+      ${AUTHOR_NESTED}
     }
     restaurant_reviews_aggregate(
       where: { author_id: { _eq: $authorId } deleted_at: { _is_null: true } parent_review_id: { _is_null: true } }
@@ -34,7 +39,7 @@ const GET_PUBLIC_USER_REVIEWS = `
     ) {
       id title content rating images palates hashtags likes_count replies_count status
       created_at published_at author_id restaurant_uuid
-      AuthorProfile { user_id username palates user { avatarUrl email } }
+      ${AUTHOR_NESTED}
     }
     restaurant_reviews_aggregate(
       where: {
@@ -56,7 +61,7 @@ const GET_USER_REVIEWS_BY_STATUS = `
     ) {
       id title content rating images palates hashtags likes_count replies_count status
       created_at published_at author_id restaurant_uuid
-      AuthorProfile { user_id username palates user { avatarUrl email } }
+      ${AUTHOR_NESTED}
     }
     restaurant_reviews_aggregate(
       where: { author_id: { _eq: $authorId } deleted_at: { _is_null: true } parent_review_id: { _is_null: true } status: { _eq: $status } }
@@ -64,7 +69,6 @@ const GET_USER_REVIEWS_BY_STATUS = `
   }
 `
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const PRIVATE_REVIEW_STATUSES = new Set(['draft', 'pending'])
 const PUBLIC_REVIEW_STATUSES = new Set(['approved'])
 
@@ -77,7 +81,7 @@ export default async (req: Request, res: Response): Promise<void> => {
     const offset = parseInt(url.searchParams.get('offset') ?? '0') || 0
 
     if (!userId) return fail(res, 'Missing required param: user_id', 400)
-    if (!UUID_REGEX.test(userId)) return fail(res, 'Invalid UUID format', 400)
+    if (!isValidUuid(userId)) return fail(res, 'Invalid UUID format', 400)
     if (status && !PRIVATE_REVIEW_STATUSES.has(status) && !PUBLIC_REVIEW_STATUSES.has(status)) {
       return fail(res, 'Invalid status', 400)
     }
@@ -101,7 +105,7 @@ export default async (req: Request, res: Response): Promise<void> => {
     }
 
     type Result = {
-      restaurant_reviews: unknown[]
+      restaurant_reviews: Array<Record<string, unknown>>
       restaurant_reviews_aggregate: { aggregate: { count: number } }
     }
 
@@ -116,8 +120,10 @@ export default async (req: Request, res: Response): Promise<void> => {
       return fail(res, 'Failed to fetch reviews', 500)
     }
 
-    const reviews = result.data?.restaurant_reviews ?? []
+    const reviewsRaw = result.data?.restaurant_reviews ?? []
     const total = result.data?.restaurant_reviews_aggregate.aggregate.count ?? 0
+
+    const reviews = await enrichReviewRows(reviewsRaw, { restaurants: true })
 
     ok(res, { reviews, meta: { total, limit, offset, hasMore: offset + reviews.length < total } })
   } catch (error) {
