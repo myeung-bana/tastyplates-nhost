@@ -49,7 +49,7 @@ const GET_RESTAURANTS_BY_UUIDS = `
   }
 `
 
-/** GraphQL fragment — keep in sync across review list handlers. */
+/** Inner fields for `restaurant_reviews.author` → `user_profiles` (Hasura metadata). */
 export const REVIEW_AUTHOR_PROFILE_FIELDS = `
   user_id
   username
@@ -58,6 +58,13 @@ export const REVIEW_AUTHOR_PROFILE_FIELDS = `
     avatarUrl
     email
     displayName
+  }
+`
+
+/** Nested author selection — use in all review Hasura queries (not `AuthorProfile`). */
+export const REVIEW_AUTHOR_GRAPHQL_NESTED = `
+  author {
+    ${REVIEW_AUTHOR_PROFILE_FIELDS}
   }
 `
 
@@ -223,7 +230,8 @@ export async function enrichReviewRows<T extends ReviewRowWithAuthor & Record<st
   for (const row of rows) {
     const authorId = row.author_id
     const fromBatch = authorId && isValidUuid(authorId) ? profileMap.get(authorId) ?? null : null
-    const fromGraphql = asAuthorProfile(row.AuthorProfile)
+    const fromGraphql =
+      asAuthorProfile(row.AuthorProfile) ?? asAuthorProfile(row.author)
     const merged = mergeAuthorProfiles(fromGraphql, fromBatch)
 
     if (merged) {

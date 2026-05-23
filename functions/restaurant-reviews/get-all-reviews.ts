@@ -1,11 +1,7 @@
 import type { Request, Response } from 'express'
 import { hasuraQuery } from '../_lib/hasura'
-import { enrichReviewRows } from '../_lib/review-enrichment'
+import { enrichReviewRows, REVIEW_AUTHOR_GRAPHQL_NESTED } from '../_lib/review-enrichment'
 import { ok, fail } from '../_lib/respond'
-
-const AUTHOR_NESTED = `
-  AuthorProfile { user_id username palates user { avatarUrl email displayName } }
-`
 
 const GET_ALL_REVIEWS = `
   query GetAllReviews($limit: Int, $offset: Int) {
@@ -16,7 +12,7 @@ const GET_ALL_REVIEWS = `
     ) {
       id author_id content created_at hashtags images is_featured is_pinned likes_count mentions
       palates rating recognitions restaurant_uuid status title updated_at views_count published_at replies_count
-      ${AUTHOR_NESTED}
+      ${REVIEW_AUTHOR_GRAPHQL_NESTED}
     }
     restaurant_reviews_aggregate(
       where: { deleted_at: { _is_null: true } parent_review_id: { _is_null: true } status: { _eq: "approved" } }
@@ -36,7 +32,7 @@ const GET_ALL_REVIEWS_CURSOR = `
     ) {
       id author_id content created_at hashtags images is_featured is_pinned likes_count mentions
       palates rating recognitions restaurant_uuid status title updated_at views_count published_at replies_count
-      ${AUTHOR_NESTED}
+      ${REVIEW_AUTHOR_GRAPHQL_NESTED}
     }
     restaurant_reviews_aggregate(
       where: { deleted_at: { _is_null: true } parent_review_id: { _is_null: true } status: { _eq: "approved" } }

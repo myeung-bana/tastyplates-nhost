@@ -1,6 +1,10 @@
 import type { Request, Response } from 'express'
 import { hasuraQuery } from '../_lib/hasura'
-import { enrichReviewRows, isValidUuid } from '../_lib/review-enrichment'
+import {
+  enrichReviewRows,
+  isValidUuid,
+  REVIEW_AUTHOR_GRAPHQL_NESTED,
+} from '../_lib/review-enrichment'
 import { ok, fail } from '../_lib/respond'
 
 const GET_REVIEW_REPLIES = `
@@ -11,7 +15,7 @@ const GET_REVIEW_REPLIES = `
       limit: $limit offset: $offset
     ) {
       id content likes_count created_at updated_at author_id
-      AuthorProfile { user_id username palates user { avatarUrl email displayName } }
+      ${REVIEW_AUTHOR_GRAPHQL_NESTED}
     }
     restaurant_reviews_aggregate(
       where: { parent_review_id: { _eq: $parentReviewId } deleted_at: { _is_null: true } status: { _eq: "approved" } }

@@ -305,7 +305,7 @@ Legend for `Auth`: `None`, `Bearer`, `Optional Bearer`, `Admin header`
 | `restaurant-reviews/get-replies` | GET | None | Thread replies for a review |
 | `restaurant-reviews/get-draft-reviews` | GET | Bearer | Current user’s drafts |
 
-List/detail review handlers run **`_lib/review-enrichment.ts`** after Hasura: batch-load `user_profiles` + `auth.users` into `AuthorProfile` when the GraphQL relationship is empty, and attach `restaurant: { uuid, title, slug }` on feed-style endpoints (`get-following-feed`, `get-user-reviews`, `restaurant-users/get-reviews`, drafts). Mobile clients should read **`AuthorProfile`** (not legacy `restaurant_users`).
+List/detail review handlers query Hasura via the **`author`** relationship (`restaurant_reviews` → `user_profiles`), then run **`_lib/review-enrichment.ts`**: merge nested `author` into response **`AuthorProfile`**, batch-fill missing profiles, and attach `restaurant: { uuid, title, slug }` on feed-style endpoints (`get-following-feed`, `get-user-reviews`, `restaurant-users/get-reviews`, drafts). Mobile clients should read **`AuthorProfile`** (not legacy `restaurant_users`).
 
 ### 8.5 Reviews — writes (`restaurant-reviews/`)
 

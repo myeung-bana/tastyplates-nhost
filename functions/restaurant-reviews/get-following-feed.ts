@@ -1,7 +1,11 @@
 import type { Request, Response } from 'express'
 import { requireAuth, getUserId } from '../_lib/auth'
 import { hasuraQuery } from '../_lib/hasura'
-import { enrichReviewRows, isValidUuid } from '../_lib/review-enrichment'
+import {
+  enrichReviewRows,
+  isValidUuid,
+  REVIEW_AUTHOR_GRAPHQL_NESTED,
+} from '../_lib/review-enrichment'
 import { ok, fail } from '../_lib/respond'
 
 const GET_FOLLOWING_IDS = `
@@ -19,7 +23,7 @@ const GET_FOLLOWING_FEED = `
     ) {
       id title content rating images palates hashtags mentions recognitions
       likes_count replies_count status created_at published_at author_id restaurant_uuid
-      AuthorProfile { user_id username palates user { avatarUrl email displayName } }
+      ${REVIEW_AUTHOR_GRAPHQL_NESTED}
     }
     restaurant_reviews_aggregate(
       where: { author_id: { _in: $authorIds } deleted_at: { _is_null: true } parent_review_id: { _is_null: true } status: { _eq: "approved" } }

@@ -1,7 +1,11 @@
 import type { Request, Response } from 'express'
 import { requireAuth, getUserId } from '../_lib/auth'
 import { hasuraQuery } from '../_lib/hasura'
-import { enrichReviewRow, isValidUuid } from '../_lib/review-enrichment'
+import {
+  enrichReviewRow,
+  isValidUuid,
+  REVIEW_AUTHOR_GRAPHQL_NESTED,
+} from '../_lib/review-enrichment'
 import { ok, fail } from '../_lib/respond'
 
 const GET_REVIEW_BY_ID = `
@@ -9,7 +13,7 @@ const GET_REVIEW_BY_ID = `
     restaurant_reviews_by_pk(id: $id) {
       id restaurant_uuid author_id parent_review_id title content rating images palates hashtags mentions
       recognitions likes_count replies_count status is_pinned is_featured created_at updated_at published_at deleted_at
-      AuthorProfile { user_id username palates user { avatarUrl email displayName } }
+      ${REVIEW_AUTHOR_GRAPHQL_NESTED}
     }
   }
 `

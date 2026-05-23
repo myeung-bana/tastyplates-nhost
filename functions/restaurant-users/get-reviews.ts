@@ -1,12 +1,12 @@
 import type { Request, Response } from 'express'
 import { requireAuth, getUserId } from '../_lib/auth'
 import { hasuraQuery } from '../_lib/hasura'
-import { enrichReviewRows, isValidUuid } from '../_lib/review-enrichment'
+import {
+  enrichReviewRows,
+  isValidUuid,
+  REVIEW_AUTHOR_GRAPHQL_NESTED,
+} from '../_lib/review-enrichment'
 import { ok, fail } from '../_lib/respond'
-
-const AUTHOR_NESTED = `
-  AuthorProfile { user_id username palates user { avatarUrl email displayName } }
-`
 
 const GET_ALL_USER_REVIEWS = `
   query GetUserReviews($authorId: uuid!, $limit: Int, $offset: Int) {
@@ -17,7 +17,7 @@ const GET_ALL_USER_REVIEWS = `
     ) {
       id title content rating images palates hashtags likes_count replies_count status
       created_at published_at author_id restaurant_uuid
-      ${AUTHOR_NESTED}
+      ${REVIEW_AUTHOR_GRAPHQL_NESTED}
     }
     restaurant_reviews_aggregate(
       where: { author_id: { _eq: $authorId } deleted_at: { _is_null: true } parent_review_id: { _is_null: true } }
@@ -39,7 +39,7 @@ const GET_PUBLIC_USER_REVIEWS = `
     ) {
       id title content rating images palates hashtags likes_count replies_count status
       created_at published_at author_id restaurant_uuid
-      ${AUTHOR_NESTED}
+      ${REVIEW_AUTHOR_GRAPHQL_NESTED}
     }
     restaurant_reviews_aggregate(
       where: {
@@ -61,7 +61,7 @@ const GET_USER_REVIEWS_BY_STATUS = `
     ) {
       id title content rating images palates hashtags likes_count replies_count status
       created_at published_at author_id restaurant_uuid
-      ${AUTHOR_NESTED}
+      ${REVIEW_AUTHOR_GRAPHQL_NESTED}
     }
     restaurant_reviews_aggregate(
       where: { author_id: { _eq: $authorId } deleted_at: { _is_null: true } parent_review_id: { _is_null: true } status: { _eq: $status } }
