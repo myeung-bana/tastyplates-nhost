@@ -116,6 +116,8 @@ enabled = false
 
 [auth.method.oauth.google]
 enabled = true
+clientId = '{{ secrets.GOOGLE_CLIENT_ID }}'
+clientSecret = '{{ secrets.GOOGLE_CLIENT_SECRET }}'
 
 [auth.method.oauth.linkedin]
 enabled = false

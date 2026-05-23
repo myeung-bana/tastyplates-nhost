@@ -29,8 +29,13 @@ This starts Postgres, Hasura, Auth, Functions, and related services defined in `
 
 1. Push this repository to GitHub.
 2. In the Nhost dashboard → **Git** → connect this repo and set the **root path** to `/` (or the monorepo subfolder if applicable).
-3. Under **Settings → Secrets**, ensure the names referenced in `nhost/nhost.toml` exist (for example `HASURA_GRAPHQL_ADMIN_SECRET`, `HASURA_GRAPHQL_JWT_SECRET`, `GRAFANA_ADMIN_PASSWORD`).
-4. Each push to the connected branch triggers a deployment.
+3. Under **Settings → Secrets**, ensure the names referenced in `nhost/nhost.toml` exist:
+   - `HASURA_GRAPHQL_ADMIN_SECRET`, `HASURA_GRAPHQL_JWT_SECRET`, `GRAFANA_ADMIN_PASSWORD`
+   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (same Web OAuth client as the Next app; see `.secrets.example`)
+4. In Google Cloud Console, set the OAuth redirect URI to  
+   `https://ygmkmxorcapgpimwerpc.auth.ap-southeast-1.nhost.run/v1/signin/provider/google/callback`
+5. Validate before deploy: `nhost config validate` (from this repo root; uses linked project secrets when logged in).
+6. Each push to the connected branch triggers a deployment.
 
 ---
 
