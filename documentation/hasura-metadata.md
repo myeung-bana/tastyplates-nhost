@@ -3,10 +3,11 @@
 This repo follows the [Nhost project layout](https://docs.nhost.io/platform/cli/local-development/):
 
 ```
+config.yaml           # Hasura CLI root (committed — required for Nhost deploy metadata step)
 nhost/
   nhost.toml
   metadata/          # Hasura API schema, permissions, relationships
-  migrations/        # Postgres schema (applied on deploy / nhost up)
+  migrations/        # Postgres schema (can be empty default/ for metadata-only deploy)
   emails/
 ```
 
@@ -35,16 +36,16 @@ Applies pending migrations under `nhost/migrations/default/` and loads `nhost/me
 
 ## Cloud deploy
 
-1. Commit and push `nhost/metadata/` and `nhost/migrations/` with your functions changes.
-2. Nhost Git deploy applies **migrations** then **metadata** to the linked project.
-3. In Hasura Console → **Data** → `restaurant_reviews` → **Relationships**: confirm **`author`** exists.
-4. In GraphiQL, introspect `restaurant_reviews` fields — `author` should be listed.
+1. Commit and push **`config.yaml`** (repo root), **`nhost/metadata/`**, and **`nhost/migrations/`** (empty `default/` is OK for metadata-only).
+2. Nhost dashboard → Git → **Base directory** = `/` when this repository root is `tastyplates-nhost`.
+3. Push triggers deploy: `nhost.toml` → migrations → **metadata** → functions.
+4. In Hasura Console → **Data** → `restaurant_reviews` → **Relationships**: confirm **`author`** exists.
+
+If deploy logs show `cannot find [config.yaml]`, the build commit is missing root `config.yaml` or the Base directory points at the wrong folder.
 
 ## Migrations caution
 
-See `nhost/migrations/README.md`. Before FK retarget migrations run on production, complete the orphan-ID preflight queries documented there (from `final-deprecation-migration.md` §E-2).
-
-Held migrations under `migrations/held/` are **not** applied automatically.
+See `nhost/migrations/README.md`. SQL migrations are **not** in `default/` yet (metadata-only). Before adding FK retarget migrations from `Repo/migrations/`, complete preflight in `final-deprecation-migration.md` §E-2.
 
 ## Updating metadata
 

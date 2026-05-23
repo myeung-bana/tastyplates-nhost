@@ -1,0 +1,5 @@
+# Hasura CLI project root — required for Nhost Git deploy (metadata apply step).
+# Do not commit secrets. Cloud deploy injects endpoint and admin secret.
+version: 3
+metadata_directory: nhost/metadata
+migrations_directory: nhost/migrations

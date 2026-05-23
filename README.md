@@ -2,11 +2,12 @@
 
 Nhost-linked repository for Tastyplates: **Hasura / Auth / Postgres configuration**, **auth email templates**, and **Nhost Functions** using the standard root-level routing layout under `functions/`.
 
-| Directory | Contents |
-|-----------|----------|
+| Path | Contents |
+|------|----------|
+| `config.yaml` | Hasura CLI root (required for Nhost deploy metadata step) |
 | `nhost/nhost.toml` | Hasura, Auth, Postgres, Observability |
-| `nhost/migrations/` | SQL migrations (schema source of truth) |
 | `nhost/metadata/` | Hasura permissions and relationships |
+| `nhost/migrations/` | SQL migrations (`default/` may be empty for metadata-only deploys) |
 | `nhost/emails/` | Auth email templates (verify, reset, OTP, etc.) |
 | `functions/` | Deployable Nhost Functions and shared helpers |
 | `documentation/` | Architecture and migration runbooks |
@@ -41,7 +42,9 @@ This starts Postgres, Hasura, Auth, Functions, and related services defined in `
 
 `nhost/metadata/` uses the standard Nhost layout (`databases/default/tables/public_*.yaml`). It includes the **`author`** relationship on `restaurant_reviews` (→ `user_profiles`), which review functions query before enriching responses as `AuthorProfile`.
 
-If the Following feed logs `field 'author' not found in type: 'restaurant_reviews'`, metadata has not been applied on cloud yet — push this repo or verify the deploy included `nhost/metadata/`.
+If deploy logs show `cannot find [config.yaml]`, commit root **`config.yaml`** and set Git **Base directory** to `/` (this repo root).
+
+If the Following feed logs `field 'author' not found in type: 'restaurant_reviews'`, metadata has not been applied on cloud yet — verify deploy succeeded with `config.yaml` + `nhost/metadata/` on the branch.
 
 See [documentation/hasura-metadata.md](documentation/hasura-metadata.md) and [nhost/migrations/README.md](nhost/migrations/README.md).
 

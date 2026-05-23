@@ -1,0 +1,5 @@
+# Copy to config.yaml at repo root (committed). Nhost deploy reads this for metadata apply.
+# Local manual apply: hasura metadata apply --endpoint "$HASURA_GRAPHQL_URL" --admin-secret "$HASURA_GRAPHQL_ADMIN_SECRET"
+version: 3
+metadata_directory: nhost/metadata
+migrations_directory: nhost/migrations
