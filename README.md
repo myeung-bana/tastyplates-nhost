@@ -35,10 +35,19 @@ This starts Postgres, Hasura, Auth, Functions, and related services defined in `
 4. In Google Cloud Console, set the OAuth redirect URI to  
    `https://ygmkmxorcapgpimwerpc.auth.ap-southeast-1.nhost.run/v1/signin/provider/google/callback`
 5. Validate before deploy: `nhost config validate` (from this repo root; uses linked project secrets when logged in).
-6. Each push to the connected branch triggers a deployment.
+6. Each push to the connected branch triggers a deployment (**migrations**, **metadata**, **functions**, and `nhost.toml`).
+
+### Hasura metadata (required for review feeds)
+
+`nhost/metadata/` uses the standard Nhost layout (`databases/default/tables/public_*.yaml`). It includes the **`author`** relationship on `restaurant_reviews` (→ `user_profiles`), which review functions query before enriching responses as `AuthorProfile`.
+
+If the Following feed logs `field 'author' not found in type: 'restaurant_reviews'`, metadata has not been applied on cloud yet — push this repo or verify the deploy included `nhost/metadata/`.
+
+See [documentation/hasura-metadata.md](documentation/hasura-metadata.md) and [nhost/migrations/README.md](nhost/migrations/README.md).
 
 ---
 
 ## Documentation
 
 - [Decouple migration plan](documentation/decouple-plan.md)
+- [Hasura metadata & migrations](documentation/hasura-metadata.md)
