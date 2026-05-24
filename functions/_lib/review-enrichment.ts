@@ -49,7 +49,7 @@ const GET_RESTAURANTS_BY_UUIDS = `
   }
 `
 
-/** Inner fields for `restaurant_reviews.author` → `user_profiles` (Hasura metadata). */
+/** Inner fields for `restaurant_reviews.AuthorProfile` → `user_profiles` (Hasura metadata). */
 export const REVIEW_AUTHOR_PROFILE_FIELDS = `
   user_id
   username
@@ -61,9 +61,9 @@ export const REVIEW_AUTHOR_PROFILE_FIELDS = `
   }
 `
 
-/** Nested author selection — use in all review Hasura queries (not `AuthorProfile`). */
+/** Nested author selection — matches cloud Hasura relationship name `AuthorProfile`. */
 export const REVIEW_AUTHOR_GRAPHQL_NESTED = `
-  author {
+  AuthorProfile {
     ${REVIEW_AUTHOR_PROFILE_FIELDS}
   }
 `
@@ -147,7 +147,8 @@ function mergeAuthorProfiles(
 }
 
 /**
- * Hasura metadata may expose the relationship as `author`; clients expect `AuthorProfile`.
+ * Normalises review author data. Hasura returns the relationship as `AuthorProfile`;
+ * any legacy `author` field is also merged in as a fallback.
  */
 export function normalizeReviewAuthorFields(review: Record<string, unknown>): void {
   const fromAuthor = asAuthorProfile(review.author)

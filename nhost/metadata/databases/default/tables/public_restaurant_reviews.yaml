@@ -130,7 +130,7 @@ delete_permissions:
       filter: {}
 
 object_relationships:
-  - name: author
+  - name: AuthorProfile
     using:
       manual_configuration:
         remote_table:

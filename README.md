@@ -40,17 +40,18 @@ This starts Postgres, Hasura, Auth, Functions, and related services defined in `
 
 ### Hasura metadata (required for review feeds)
 
-`nhost/metadata/` uses the standard Nhost layout (`databases/default/tables/public_*.yaml`). It includes the **`author`** relationship on `restaurant_reviews` (→ `user_profiles`), which review functions query before enriching responses as `AuthorProfile`.
+`nhost/metadata/` uses the standard Nhost layout (`databases/default/tables/public_*.yaml`). It includes the **`AuthorProfile`** relationship on `restaurant_reviews` (→ `user_profiles`), which review functions query and return to mobile as `AuthorProfile`.
 
-If deploy logs show `cannot find [config.yaml]`, commit root **`config.yaml`** and set Git **Base directory** to `/` (this repo root).
+If deploy logs show `cannot find [config.yaml]`, commit root **`config.yaml`** and set Git **Base directory** to `/` (standalone repo) or **`tastyplates-nhost`** (monorepo subfolder).
 
-If the Following feed logs `field 'author' not found in type: 'restaurant_reviews'`, metadata has not been applied on cloud yet — verify deploy succeeded with `config.yaml` + `nhost/metadata/` on the branch.
+If the Following feed logs `field 'AuthorProfile' not found` or `field 'author' not found`, the relationship is missing or has the wrong name on cloud — Hasura relationship must be **`AuthorProfile`**. See [api-doc-v2.md](documentation/api-doc-v2.md) (Part 2).
 
-See [documentation/hasura-metadata.md](documentation/hasura-metadata.md) and [nhost/migrations/README.md](nhost/migrations/README.md).
+See [documentation/api-doc-v2.md](documentation/api-doc-v2.md) (Hasura + operations), [api-guide.md](documentation/api-guide.md) (HTTP functions), and [nhost/migrations/README.md](nhost/migrations/README.md).
 
 ---
 
 ## Documentation
 
+- [API & Hasura (v2)](documentation/api-doc-v2.md) — metadata, deploy, troubleshooting
+- [Nhost Functions API guide](documentation/api-guide.md) — HTTP routes, auth, envelope
 - [Decouple migration plan](documentation/decouple-plan.md)
-- [Hasura metadata & migrations](documentation/hasura-metadata.md)

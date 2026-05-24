@@ -4,4 +4,3 @@ dist/
 .env.local
 .secrets
 *.js.map
-config.yaml
