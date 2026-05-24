@@ -157,7 +157,7 @@ export function toFollowListUser(row: UserProfileRow): {
 export async function getProfileById(userId: string): Promise<UserProfileRow | null> {
   const data = await hasuraAdmin<{ user_profiles: UserProfileRow[] }>(
     `
-      query GetUserProfileById($userId: String!) {
+      query GetUserProfileById($userId: bpchar!) {
         user_profiles(where: { user_id: { _eq: $userId } }, limit: 1) {
           ${PROFILE_FIELDS}
         }
@@ -189,7 +189,7 @@ export async function getProfilesByIds(userIds: string[]): Promise<UserProfileRo
   if (userIds.length === 0) return []
   const data = await hasuraAdmin<{ user_profiles: UserProfileRow[] }>(
     `
-      query GetUserProfilesByIds($userIds: [String!]!) {
+      query GetUserProfilesByIds($userIds: [bpchar!]!) {
         user_profiles(where: { user_id: { _in: $userIds } }) {
           ${PROFILE_FIELDS}
         }
@@ -299,7 +299,7 @@ export async function updateUserProfile(
     update_user_profiles: { affected_rows: number }
   }>(
     `
-      mutation UpdateUserProfile($userId: String!, $changes: user_profiles_set_input!) {
+      mutation UpdateUserProfile($userId: bpchar!, $changes: user_profiles_set_input!) {
         update_user_profiles(where: { user_id: { _eq: $userId } }, _set: $changes) {
           affected_rows
         }
@@ -314,7 +314,7 @@ export async function softDeleteUserProfile(userId: string): Promise<void> {
     update_user_profiles: { affected_rows: number }
   }>(
     `
-      mutation SoftDeleteUserProfile($userId: String!, $now: timestamptz!) {
+      mutation SoftDeleteUserProfile($userId: bpchar!, $now: timestamptz!) {
         update_user_profiles(
           where: { user_id: { _eq: $userId } }
           _set: { deleted_at: $now }

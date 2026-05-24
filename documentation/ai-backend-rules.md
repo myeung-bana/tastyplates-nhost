@@ -442,25 +442,30 @@ functions/
 
 ### Rule 4.6 — GraphQL queries in functions must use variable types that match the actual Postgres column types
 
-This is the cause of `variable 'userId' is declared as 'uuid!' but used where 'bpchar' is expected`.
+This is the cause of `variable 'userId' is declared as 'uuid!' but used where 'bpchar' is expected` and `variable 'userIds' is declared as '[String!]!' but used where '[bpchar!]' is expected`.
 
-`user_profiles.user_id` is stored as `character varying` (`bpchar`) in Postgres, not as `uuid`, even though values are UUID-shaped. Hasura reflects the actual Postgres type in the GraphQL schema.
+`user_profiles.user_id` is stored as `character` (`bpchar`) in Postgres, not as `uuid` or `varchar`. Hasura reflects the actual Postgres type as its own `bpchar` scalar in the GraphQL schema.
 
 **Correct GraphQL variable type for `user_profiles.user_id`:**
 
 ```graphql
 # ✅ CORRECT
-query GetUserProfile($userId: String!) {
+query GetUserProfile($userId: bpchar!) {
   user_profiles(where: { user_id: { _eq: $userId } }) { ... }
 }
 
-# ❌ WRONG — will fail at Hasura validation
-query GetUserProfile($userId: uuid!) {
-  user_profiles(where: { user_id: { _eq: $userId } }) { ... }
+query GetUserProfiles($userIds: [bpchar!]!) {
+  user_profiles(where: { user_id: { _in: $userIds } }) { ... }
 }
+
+# ❌ WRONG — uuid! fails with "used where 'bpchar' is expected"
+query GetUserProfile($userId: uuid!) { ... }
+
+# ❌ ALSO WRONG — String! fails with "used where 'bpchar' is expected"
+query GetUserProfile($userId: String!) { ... }
 ```
 
-**Rule:** Before writing any function query, verify the actual column type in Hasura Console → Data → [table] → Columns. Use the GraphQL type Hasura assigns, not what you expect the column to be.
+**Rule:** Before writing any function query, verify the actual column type in Hasura Console → Data → [table] → Columns. Use the GraphQL scalar Hasura assigns, not what you expect the column to be. `auth.users.id` is a real `uuid`; `user_profiles.user_id` is `bpchar`.
 
 ---
 
@@ -518,7 +523,7 @@ Step 7 — Smoke test the live endpoint
 | `field 'X' not found in type: 'query_root'` | Table not tracked in Hasura metadata | Add `public_X.yaml` + entry in `tables.yaml`; push and redeploy |
 | `field 'AuthorProfile' not found in type: 'restaurant_reviews'` | Relationship renamed or not in metadata | Restore `AuthorProfile` in `public_restaurant_reviews.yaml`; push; verify in Console |
 | `field 'author' not found in type: 'restaurant_reviews'` | Function is querying old `author` field name | Update function to query `AuthorProfile`; do NOT rename the metadata relationship |
-| `variable 'userId' is declared as 'uuid!' but used where 'bpchar' is expected` | GraphQL variable type mismatch with actual Postgres column | Change query variable to `$userId: String!` (user_profiles.user_id is varchar) |
+| `variable 'userId' is declared as 'uuid!' but used where 'bpchar' is expected` | GraphQL variable type mismatch with actual Postgres column | Change query variable to `$userId: bpchar!` (user_profiles.user_id is char/bpchar, not uuid or String) |
 | `field 'user_place_collections' not found` | New table not tracked | Add migration + metadata + `tables.yaml` entry; push atomically |
 | Console changes work but break after next push | Console changes not exported to Git | Run `nhost metadata export`; commit; push |
 | Following feed breaks, home reviews work | `get-following-feed` function or `AuthorProfile` relationship issue | Test the function directly with curl; check Hasura for relationship on cloud |
