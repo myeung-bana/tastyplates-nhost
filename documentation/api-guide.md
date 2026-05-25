@@ -411,7 +411,154 @@ curl -sS -X POST "$BASE/admin/backfill-rating-summary" \
 
 ---
 
-## 10. Operational checklist
+## 8. Restaurant lists (user-curated playlists)
+
+User-owned, named playlists of restaurants — a separate product from the
+To-Dine/Check-ins buckets in My Lists. Editorial rows (`owner_id IS NULL`)
+coexist in the same tables and are unaffected by these endpoints.
+
+All write endpoints require `Authorization: Bearer <access_token>`.
+Read endpoints for public content require no auth.
+
+### Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `restaurant-lists/get-my-lists` | Bearer | Owner's lists with item count and cover image |
+| `POST` | `restaurant-lists/create-list` | Bearer | Create list; server generates slug + share_token |
+| `PATCH` | `restaurant-lists/update-list` | Bearer | Edit title, description, visibility |
+| `DELETE` | `restaurant-lists/delete-list` | Bearer | Delete list and all its items |
+| `POST` | `restaurant-lists/add-item` | Bearer | Add restaurant to a list (TP uuid or Google place_id) |
+| `DELETE` | `restaurant-lists/remove-item` | Bearer | Remove item by item_id |
+| `PATCH` | `restaurant-lists/reorder-items` | Bearer | Bulk-update sort_order |
+| `GET` | `restaurant-lists/get-list-by-slug?slug=` | Optional Bearer | Public or owner-only list by slug |
+| `GET` | `restaurant-lists/get-list-by-share-token?token=` | None | Capability-URL access for private lists |
+| `GET` | `restaurant-lists/get-public-lists?page=&limit=` | None | Paginated community lists |
+| `POST` | `restaurant-lists/regenerate-share-token` | Bearer | Invalidate old share link; issue new token |
+
+### Request/response reference
+
+**`POST create-list`**
+```json
+// Request body
+{ "title": "Best Ramen in HK", "description": "...", "visibility": "private" }
+
+// Response 201
+{
+  "ok": true,
+  "data": {
+    "list": {
+      "id": 42, "uuid": "...", "slug": "best-ramen-in-hk-x3f9a2",
+      "title": "Best Ramen in HK", "visibility": "private",
+      "share_token": "dGhpcyBpcyBhIHRlc3Q",
+      "created_at": "..."
+    }
+  }
+}
+```
+
+`share_token` is ~22-character base64url (128-bit entropy). Treat it as a
+secret. It is returned **only** to the owner (via `create-list`,
+`get-my-lists`, `get-list-by-slug` when caller is owner).
+
+**`POST add-item`**
+```json
+// Add a linked TP listing
+{ "list_uuid": "...", "restaurant_uuid": "..." }
+
+// Add a Google-only place
+{ "list_uuid": "...", "google_place_id": "ChIJ..." }
+
+// Add both at once (pre-linked)
+{ "list_uuid": "...", "restaurant_uuid": "...", "google_place_id": "ChIJ..." }
+
+// Duplicate → 409
+```
+
+**`PATCH reorder-items`**
+```json
+{
+  "list_uuid": "...",
+  "order": [
+    { "item_id": 1, "sort_order": 0 },
+    { "item_id": 3, "sort_order": 1 },
+    { "item_id": 2, "sort_order": 2 }
+  ]
+}
+```
+
+**`GET get-list-by-slug`** — items include resolved `name`, `slug`,
+`image_url`, `address`, `rating` (from TP table or `google_place_cache`).
+
+**`GET get-list-by-share-token`** — no auth required; `share_token` is
+omitted from the response body. Wrong token always returns 404 (no info leak).
+
+### Share-link URL shapes
+
+| Style | URL | Notes |
+|-------|-----|-------|
+| Dedicated path (preferred) | `https://tastyplates.co/lists/share/{token}` | No ambiguity with slug route |
+| Query param | `https://tastyplates.co/lists/{slug}?token={token}` | Resolver tries token first |
+
+### curl QA examples
+
+```bash
+BASE="${NHOST_FUNCTIONS_BASE}"
+TOKEN="your_access_token"
+
+# Create a private list
+curl -sS -X POST "$BASE/restaurant-lists/create-list" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Hidden Gems","visibility":"private"}' | jq .
+
+# Capture uuid and share_token from above response, then:
+LIST_UUID="<uuid from response>"
+SHARE_TOKEN="<share_token from response>"
+
+# Get the list as owner (share_token included in response)
+curl -sS "$BASE/restaurant-lists/get-list-by-slug?slug=hidden-gems-xxxxxx" \
+  -H "Authorization: Bearer $TOKEN" | jq .
+
+# Access the private list via share link — no auth required
+curl -sS "$BASE/restaurant-lists/get-list-by-share-token?token=$SHARE_TOKEN" | jq .
+# Expected: 200 with list + items, share_token omitted from response body
+
+# Wrong token → 404
+curl -sS "$BASE/restaurant-lists/get-list-by-share-token?token=wrongtoken" | jq .
+# Expected: { "ok": false, "error": "List not found" }
+
+# Get the list without auth → 404 (private)
+curl -sS "$BASE/restaurant-lists/get-list-by-slug?slug=hidden-gems-xxxxxx" | jq .
+# Expected: { "ok": false, "error": "List not found" }
+
+# Make the list public, then GET by slug without auth → 200
+curl -sS -X PATCH "$BASE/restaurant-lists/update-list" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"list_uuid\":\"$LIST_UUID\",\"visibility\":\"public\"}" | jq .
+
+# Browse community lists
+curl -sS "$BASE/restaurant-lists/get-public-lists?page=0&limit=10" | jq .
+
+# Regenerate share link (old link instantly invalid)
+curl -sS -X POST "$BASE/restaurant-lists/regenerate-share-token" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"list_uuid\":\"$LIST_UUID\"}" | jq .
+
+# Verify editorial list (owner_id IS NULL) is unaffected by user APIs
+# (Attempt to update an editorial list returns 404 — owner check fails)
+curl -sS -X PATCH "$BASE/restaurant-lists/update-list" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"list_uuid":"<editorial-list-uuid>","title":"hack"}' | jq .
+# Expected: { "ok": false, "error": "List not found" }
+```
+
+---
+
+## 9. Operational checklist (was §10)
 
 1. **Secrets:** Dashboard or local `.secrets` contains `HASURA_GRAPHQL_ADMIN_SECRET` and `HASURA_GRAPHQL_JWT_SECRET`.
 2. **Functions URL:** `NEXT_PUBLIC_NHOST_FUNCTIONS_URL` matches the dashboard URL and version concatenation rules from section 1.
@@ -422,7 +569,7 @@ curl -sS -X POST "$BASE/admin/backfill-rating-summary" \
 
 ---
 
-## 11. Related docs
+## 10. Related docs
 
 | Document | Purpose |
 |---|---|
