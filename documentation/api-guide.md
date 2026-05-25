@@ -424,7 +424,7 @@ Read endpoints for public content require no auth.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET` | `restaurant-lists/get-my-lists` | Bearer | Owner's lists with item count and cover image |
+| `GET` | `restaurant-lists/get-my-lists` | Bearer | Owner's lists with per-list `items_count` and cover (`display_pic`) |
 | `POST` | `restaurant-lists/claim-lists` | Bearer | Set `owner_id` on orphan lists (`owner_id` was NULL) |
 | `POST` | `restaurant-lists/create-list` | Bearer | Create list; server generates slug + share_token |
 | `PATCH` | `restaurant-lists/update-list` | Bearer | Edit title, description, is_public |
@@ -442,6 +442,19 @@ Read endpoints for public content require no auth.
 **`GET get-my-lists`** — filters `recommended_restaurant_lists` where
 `owner_id` equals the JWT `x-hasura-user-id` (same as `auth.users.id`).
 Lists created in the Console without `owner_id` will not appear until claimed.
+
+Response fields:
+- `items_count` — count of rows in `recommended_restaurant_list_items` for that list
+  (nested `recommended_restaurant_list_items_aggregate` on `recommended_restaurant_lists`).
+- `display_pic` — user-supplied cover image URL stored on the list row (text column).
+- `cover_image_url` — `display_pic` when set; otherwise null (first-item restaurant photo
+  fallback can be added later via nested `recommended_restaurant_list_items`).
+
+**Hasura prerequisite:** Array relationship `recommended_restaurant_list_items` on
+`recommended_restaurant_lists` (FK `list_id`). Defined in repo metadata
+`Repo/metadata/databases/default/tables/public_recommended_restaurant_lists.yaml`.
+Apply via Hasura Console (Relationships → track FK) or `hasura metadata apply`.
+Without it, nested aggregate queries return validation errors.
 
 **`POST claim-lists`** — for playlists inserted without `owner_id`:
 ```json

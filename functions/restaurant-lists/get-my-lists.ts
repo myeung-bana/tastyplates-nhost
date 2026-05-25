@@ -3,6 +3,9 @@
  *
  * Returns all lists owned by the authenticated user (owner_id = JWT x-hasura-user-id),
  * ordered by most recently updated.
+ *
+ * Requires array relationship `recommended_restaurant_list_items` on
+ * `recommended_restaurant_lists` (list_id FK) in Hasura metadata.
  */
 import type { Request, Response } from 'express'
 import { requireAuth, getUserId } from '../_lib/auth'
@@ -17,15 +20,9 @@ const GET_MY_LISTS = `
     ) {
       id uuid slug title description is_public is_active
       share_token created_at updated_at
+      display_pic
       items_aggregate: recommended_restaurant_list_items_aggregate {
         aggregate { count }
-      }
-      first_item: recommended_restaurant_list_items(
-        order_by: { sort_order: asc }
-        limit: 1
-      ) {
-        restaurant_uuid google_place_id
-        restaurant { featured_image_url title }
       }
     }
   }
@@ -42,12 +39,8 @@ type RawList = {
   share_token: string | null
   created_at: string
   updated_at: string
+  display_pic: string | null
   items_aggregate: { aggregate: { count: number } }
-  first_item: Array<{
-    restaurant_uuid: string | null
-    google_place_id: string | null
-    restaurant: { featured_image_url: string | null; title: string } | null
-  }>
 }
 
 export default async (req: Request, res: Response): Promise<void> => {
@@ -71,7 +64,8 @@ export default async (req: Request, res: Response): Promise<void> => {
       created_at: list.created_at,
       updated_at: list.updated_at,
       items_count: list.items_aggregate.aggregate.count,
-      cover_image_url: list.first_item[0]?.restaurant?.featured_image_url ?? null,
+      display_pic: list.display_pic?.trim() || null,
+      cover_image_url: list.display_pic?.trim() || null,
     }))
 
     ok(res, lists)

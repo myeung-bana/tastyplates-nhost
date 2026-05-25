@@ -27,15 +27,10 @@ const GET_PUBLIC_LISTS = `
       offset: $offset
     ) {
       uuid slug title description owner_id created_at updated_at
+      display_pic
       owner { displayName avatarUrl }
       items_aggregate: recommended_restaurant_list_items_aggregate {
         aggregate { count }
-      }
-      first_item: recommended_restaurant_list_items(
-        order_by: { sort_order: asc }
-        limit: 1
-      ) {
-        restaurant { featured_image_url }
       }
     }
     recommended_restaurant_lists_aggregate(
@@ -67,9 +62,9 @@ export default async (req: Request, res: Response): Promise<void> => {
       owner_id: string
       created_at: string
       updated_at: string
+      display_pic: string | null
       owner: { displayName: string | null; avatarUrl: string | null } | null
       items_aggregate: { aggregate: { count: number } }
-      first_item: Array<{ restaurant: { featured_image_url: string | null } | null }>
     }
 
     type Result = {
@@ -87,7 +82,8 @@ export default async (req: Request, res: Response): Promise<void> => {
       owner_id: list.owner_id,
       owner: list.owner,
       items_count: list.items_aggregate.aggregate.count,
-      cover_image_url: list.first_item[0]?.restaurant?.featured_image_url ?? null,
+      display_pic: list.display_pic?.trim() || null,
+      cover_image_url: list.display_pic?.trim() || null,
       created_at: list.created_at,
       updated_at: list.updated_at,
     }))
