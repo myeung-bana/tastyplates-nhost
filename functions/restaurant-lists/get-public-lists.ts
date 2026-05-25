@@ -28,10 +28,10 @@ const GET_PUBLIC_LISTS = `
     ) {
       uuid slug title description owner_id created_at updated_at
       owner { displayName avatarUrl }
-      items_aggregate {
+      items_aggregate: recommended_restaurant_list_items_aggregate {
         aggregate { count }
       }
-      first_item: items(
+      first_item: recommended_restaurant_list_items(
         order_by: { sort_order: asc }
         limit: 1
       ) {

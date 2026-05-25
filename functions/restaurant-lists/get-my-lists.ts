@@ -17,10 +17,10 @@ const GET_MY_LISTS = `
     ) {
       id uuid slug title description is_public is_active
       share_token created_at updated_at
-      items_aggregate {
+      items_aggregate: recommended_restaurant_list_items_aggregate {
         aggregate { count }
       }
-      first_item: items(
+      first_item: recommended_restaurant_list_items(
         order_by: { sort_order: asc }
         limit: 1
       ) {

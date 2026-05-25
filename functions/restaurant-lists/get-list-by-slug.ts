@@ -25,7 +25,7 @@ const GET_LIST_BY_SLUG = `
       id uuid slug title description is_public is_active
       share_token owner_id created_at updated_at
       owner { id displayName avatarUrl }
-      items(order_by: { sort_order: asc }) {
+      items: recommended_restaurant_list_items(order_by: { sort_order: asc }) {
         id list_id sort_order restaurant_uuid google_place_id
         restaurant_id city_location_id created_at
         restaurant {
