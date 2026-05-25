@@ -1,12 +1,8 @@
 /**
  * POST /v1/restaurant-lists/create-list
  *
- * Creates a new user-curated restaurant list. Generates a URL-safe slug
- * (title-derived + 6-char random suffix to prevent collisions) and a
- * 128-bit base64url share token (server-only — never a Hasura preset).
- *
- * Body: { title: string, description?: string, visibility?: 'private' | 'public' }
- * Auth: Required.
+ * Body: { title: string, description?: string, is_public?: boolean }
+ * Default is_public: true (public list).
  */
 import type { Request, Response } from 'express'
 import { randomBytes } from 'node:crypto'
@@ -19,7 +15,7 @@ import { validate } from '../_lib/validate'
 const CreateListSchema = z.object({
   title: z.string().min(1).max(100),
   description: z.string().max(500).optional().default(''),
-  visibility: z.enum(['private', 'public']).default('private'),
+  is_public: z.boolean().default(true),
 })
 
 const CHECK_SLUG_EXISTS = `
@@ -34,18 +30,18 @@ const CHECK_SLUG_EXISTS = `
 const CREATE_LIST = `
   mutation CreateList(
     $ownerId: uuid!, $slug: String!, $title: String!,
-    $description: String!, $visibility: String!, $shareToken: String!
+    $description: String!, $isPublic: Boolean!, $shareToken: String!
   ) {
     insert_recommended_restaurant_lists_one(object: {
       owner_id: $ownerId
       slug: $slug
       title: $title
       description: $description
-      visibility: $visibility
+      is_public: $isPublic
       share_token: $shareToken
       is_active: true
     }) {
-      id uuid slug title description visibility share_token created_at updated_at
+      id uuid slug title description is_public share_token created_at updated_at
     }
   }
 `
@@ -61,7 +57,6 @@ function slugify(text: string): string {
 }
 
 function randomSuffix(len = 6): string {
-  // URL-safe alphanumeric characters for the suffix portion
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
   const bytes = randomBytes(len)
   return Array.from(bytes).map((b) => chars[b % chars.length]).join('')
@@ -74,7 +69,6 @@ async function buildUniqueSlug(base: string): Promise<string> {
     const r = await hasuraAdmin<R>(CHECK_SLUG_EXISTS, { slug: candidate })
     if ((r.recommended_restaurant_lists ?? []).length === 0) return candidate
   }
-  // Extremely unlikely; append timestamp as final fallback
   return `${base}-${Date.now()}`
 }
 
@@ -89,8 +83,6 @@ export default async (req: Request, res: Response): Promise<void> => {
 
     const slugBase = slugify(body.title) || 'my-list'
     const slug = await buildUniqueSlug(slugBase)
-
-    // 128-bit entropy — same as UUID v4; base64url keeps URLs short (~22 chars)
     const shareToken = randomBytes(16).toString('base64url')
 
     type Result = { insert_recommended_restaurant_lists_one: unknown }
@@ -99,7 +91,7 @@ export default async (req: Request, res: Response): Promise<void> => {
       slug,
       title: body.title,
       description: body.description ?? '',
-      visibility: body.visibility,
+      isPublic: body.is_public,
       shareToken,
     })
 

@@ -426,7 +426,7 @@ Read endpoints for public content require no auth.
 |--------|------|------|-------------|
 | `GET` | `restaurant-lists/get-my-lists` | Bearer | Owner's lists with item count and cover image |
 | `POST` | `restaurant-lists/create-list` | Bearer | Create list; server generates slug + share_token |
-| `PATCH` | `restaurant-lists/update-list` | Bearer | Edit title, description, visibility |
+| `PATCH` | `restaurant-lists/update-list` | Bearer | Edit title, description, is_public |
 | `DELETE` | `restaurant-lists/delete-list` | Bearer | Delete list and all its items |
 | `POST` | `restaurant-lists/add-item` | Bearer | Add restaurant to a list (TP uuid or Google place_id) |
 | `DELETE` | `restaurant-lists/remove-item` | Bearer | Remove item by item_id |
@@ -441,7 +441,7 @@ Read endpoints for public content require no auth.
 **`POST create-list`**
 ```json
 // Request body
-{ "title": "Best Ramen in HK", "description": "...", "visibility": "private" }
+{ "title": "Best Ramen in HK", "description": "...", "is_public": false }
 
 // Response 201
 {
@@ -449,7 +449,7 @@ Read endpoints for public content require no auth.
   "data": {
     "list": {
       "id": 42, "uuid": "...", "slug": "best-ramen-in-hk-x3f9a2",
-      "title": "Best Ramen in HK", "visibility": "private",
+      "title": "Best Ramen in HK", "is_public": false,
       "share_token": "dGhpcyBpcyBhIHRlc3Q",
       "created_at": "..."
     }
@@ -510,7 +510,7 @@ TOKEN="your_access_token"
 curl -sS -X POST "$BASE/restaurant-lists/create-list" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"title":"Hidden Gems","visibility":"private"}' | jq .
+  -d '{"title":"Hidden Gems","is_public":false}' | jq .
 
 # Capture uuid and share_token from above response, then:
 LIST_UUID="<uuid from response>"
@@ -536,7 +536,7 @@ curl -sS "$BASE/restaurant-lists/get-list-by-slug?slug=hidden-gems-xxxxxx" | jq 
 curl -sS -X PATCH "$BASE/restaurant-lists/update-list" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"list_uuid\":\"$LIST_UUID\",\"visibility\":\"public\"}" | jq .
+  -d "{\"list_uuid\":\"$LIST_UUID\",\"is_public\":true}" | jq .
 
 # Browse community lists
 curl -sS "$BASE/restaurant-lists/get-public-lists?page=0&limit=10" | jq .

@@ -18,7 +18,7 @@ const GET_PUBLIC_LISTS = `
   query GetPublicLists($limit: Int!, $offset: Int!) {
     recommended_restaurant_lists(
       where: {
-        visibility: { _eq: "public" }
+        is_public: { _eq: true }
         is_active: { _eq: true }
         owner_id: { _is_null: false }
       }
@@ -40,7 +40,7 @@ const GET_PUBLIC_LISTS = `
     }
     recommended_restaurant_lists_aggregate(
       where: {
-        visibility: { _eq: "public" }
+        is_public: { _eq: true }
         is_active: { _eq: true }
         owner_id: { _is_null: false }
       }

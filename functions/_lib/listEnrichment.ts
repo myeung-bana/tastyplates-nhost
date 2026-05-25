@@ -39,7 +39,7 @@ export interface RawList {
   slug: string
   title: string
   description: string | null
-  visibility: string
+  is_public: boolean
   is_active: boolean
   share_token: string | null
   owner_id: string | null
@@ -148,7 +148,7 @@ export function buildListResponse(
     slug: list.slug,
     title: list.title,
     description: list.description,
-    visibility: list.visibility,
+    is_public: list.is_public,
     is_active: list.is_active,
     // share_token only returned to the owner
     ...(isOwner ? { share_token: list.share_token } : {}),

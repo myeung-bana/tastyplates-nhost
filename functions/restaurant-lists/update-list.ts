@@ -1,11 +1,7 @@
 /**
  * PATCH /v1/restaurant-lists/update-list
  *
- * Updates title, description, and/or visibility of an owned list.
- * Ownership is verified before any write.
- *
- * Body: { list_uuid: string, title?: string, description?: string, visibility?: 'private' | 'public' }
- * Auth: Required.
+ * Body: { list_uuid: string, title?: string, description?: string, is_public?: boolean }
  */
 import type { Request, Response } from 'express'
 import { z } from 'zod'
@@ -18,10 +14,10 @@ const UpdateListSchema = z.object({
   list_uuid: z.string().uuid(),
   title: z.string().min(1).max(100).optional(),
   description: z.string().max(500).optional(),
-  visibility: z.enum(['private', 'public']).optional(),
+  is_public: z.boolean().optional(),
 }).refine(
-  (d) => d.title !== undefined || d.description !== undefined || d.visibility !== undefined,
-  { message: 'At least one of title, description, or visibility must be provided' },
+  (d) => d.title !== undefined || d.description !== undefined || d.is_public !== undefined,
+  { message: 'At least one of title, description, or is_public must be provided' },
 )
 
 const VERIFY_OWNERSHIP = `
@@ -40,7 +36,7 @@ const UPDATE_LIST = `
       _set: $set
     ) {
       returning {
-        id uuid slug title description visibility updated_at
+        id uuid slug title description is_public updated_at
       }
     }
   }
@@ -55,7 +51,6 @@ export default async (req: Request, res: Response): Promise<void> => {
     const body = validate(req, res, UpdateListSchema)
     if (!body) return
 
-    // Ownership check
     type OwnerCheck = { recommended_restaurant_lists: { id: number }[] }
     const check = await hasuraAdmin<OwnerCheck>(VERIFY_OWNERSHIP, {
       uuid: body.list_uuid,
@@ -69,7 +64,7 @@ export default async (req: Request, res: Response): Promise<void> => {
     const set: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (body.title !== undefined) set.title = body.title
     if (body.description !== undefined) set.description = body.description
-    if (body.visibility !== undefined) set.visibility = body.visibility
+    if (body.is_public !== undefined) set.is_public = body.is_public
 
     type Result = { update_recommended_restaurant_lists: { returning: unknown[] } }
     const data = await hasuraAdmin<Result>(UPDATE_LIST, { uuid: body.list_uuid, set })

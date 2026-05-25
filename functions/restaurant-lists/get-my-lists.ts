@@ -18,7 +18,7 @@ const GET_MY_LISTS = `
       where: { owner_id: { _eq: $ownerId } }
       order_by: { updated_at: desc }
     ) {
-      id uuid slug title description visibility is_active
+      id uuid slug title description is_public is_active
       share_token created_at updated_at
       items_aggregate: recommended_restaurant_list_items_aggregate {
         aggregate { count }
@@ -40,7 +40,7 @@ type RawList = {
   slug: string
   title: string
   description: string | null
-  visibility: string
+  is_public: boolean
   is_active: boolean
   share_token: string | null
   created_at: string
@@ -68,7 +68,7 @@ export default async (req: Request, res: Response): Promise<void> => {
       slug: list.slug,
       title: list.title,
       description: list.description,
-      visibility: list.visibility,
+      is_public: list.is_public,
       is_active: list.is_active,
       share_token: list.share_token,
       created_at: list.created_at,

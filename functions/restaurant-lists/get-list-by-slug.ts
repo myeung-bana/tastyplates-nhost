@@ -22,7 +22,7 @@ const GET_LIST_BY_SLUG = `
       where: { slug: { _eq: $slug }, is_active: { _eq: true } }
       limit: 1
     ) {
-      id uuid slug title description visibility is_active
+      id uuid slug title description is_public is_active
       share_token owner_id created_at updated_at
       owner { id displayName avatarUrl }
       items: recommended_restaurant_list_items(order_by: { sort_order: asc }) {
@@ -69,7 +69,7 @@ export default async (req: Request, res: Response): Promise<void> => {
     }
 
     // Private list: only owner can see it
-    if (list.visibility === 'private' && callerId !== list.owner_id) {
+    if (!list.is_public && callerId !== list.owner_id) {
       fail(res, 'List not found', 404)
       return
     }
