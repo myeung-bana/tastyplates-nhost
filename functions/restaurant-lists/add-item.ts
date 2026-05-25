@@ -33,7 +33,7 @@ const VERIFY_OWNERSHIP = `
       limit: 1
     ) {
       id
-      items_aggregate: recommended_restaurant_list_items_aggregate { aggregate { count } }
+      items_aggregate { aggregate { count } }
     }
   }
 `

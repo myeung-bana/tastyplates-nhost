@@ -1,11 +1,8 @@
 /**
  * GET /v1/restaurant-lists/get-my-lists
  *
- * Returns all lists owned by the authenticated user, ordered by most recently
- * updated. Includes item count and the cover image URL (first item's restaurant
- * image or Google place photo).
- *
- * Auth: Required (Bearer JWT).
+ * Returns all lists owned by the authenticated user (owner_id = JWT x-hasura-user-id),
+ * ordered by most recently updated.
  */
 import type { Request, Response } from 'express'
 import { requireAuth, getUserId } from '../_lib/auth'
@@ -20,10 +17,10 @@ const GET_MY_LISTS = `
     ) {
       id uuid slug title description is_public is_active
       share_token created_at updated_at
-      items_aggregate: recommended_restaurant_list_items_aggregate {
+      items_aggregate {
         aggregate { count }
       }
-      first_item: recommended_restaurant_list_items(
+      first_item: items(
         order_by: { sort_order: asc }
         limit: 1
       ) {

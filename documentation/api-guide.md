@@ -425,6 +425,7 @@ Read endpoints for public content require no auth.
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `restaurant-lists/get-my-lists` | Bearer | Owner's lists with item count and cover image |
+| `POST` | `restaurant-lists/claim-lists` | Bearer | Set `owner_id` on orphan lists (`owner_id` was NULL) |
 | `POST` | `restaurant-lists/create-list` | Bearer | Create list; server generates slug + share_token |
 | `PATCH` | `restaurant-lists/update-list` | Bearer | Edit title, description, is_public |
 | `DELETE` | `restaurant-lists/delete-list` | Bearer | Delete list and all its items |
@@ -437,6 +438,29 @@ Read endpoints for public content require no auth.
 | `POST` | `restaurant-lists/regenerate-share-token` | Bearer | Invalidate old share link; issue new token |
 
 ### Request/response reference
+
+**`GET get-my-lists`** — filters `recommended_restaurant_lists` where
+`owner_id` equals the JWT `x-hasura-user-id` (same as `auth.users.id`).
+Lists created in the Console without `owner_id` will not appear until claimed.
+
+**`POST claim-lists`** — for playlists inserted without `owner_id`:
+```json
+// Request
+{ "list_uuids": ["...", "..."] }
+
+// Response
+{
+  "ok": true,
+  "data": {
+    "owner_id": "<your-user-uuid>",
+    "claimed": [ { "uuid": "...", "title": "...", "owner_id": "..." } ],
+    "claimed_count": 2,
+    "skipped_count": 0
+  }
+}
+```
+Only rows with `owner_id IS NULL` and a matching `uuid` are updated.
+`skipped_count` counts uuids that were already owned or not found.
 
 **`POST create-list`**
 ```json
@@ -505,6 +529,12 @@ omitted from the response body. Wrong token always returns 404 (no info leak).
 ```bash
 BASE="${NHOST_FUNCTIONS_BASE}"
 TOKEN="your_access_token"
+
+# Claim orphan lists (Console-created rows missing owner_id)
+curl -sS -X POST "$BASE/restaurant-lists/claim-lists" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"list_uuids":["<uuid-1>","<uuid-2>"]}' | jq .
 
 # Create a private list
 curl -sS -X POST "$BASE/restaurant-lists/create-list" \
