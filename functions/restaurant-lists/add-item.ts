@@ -5,26 +5,51 @@
  * (for listed venues) or a `google_place_id` (for Google-only places), or both.
  * Returns 409 if the item already exists in the list.
  *
- * Body: { list_uuid: string, restaurant_uuid?: string, google_place_id?: string }
+ * Body: {
+ *   list_uuid: string,
+ *   restaurant_uuid?: string,
+ *   google_place_id?: string,
+ *   place_name?: string,
+ *   place_address?: string,
+ *   place_photo_url?: string,
+ *   place_rating?: number,
+ *   place_latitude?: number,
+ *   place_longitude?: number,
+ *   restaurant_slug?: string,
+ * }
  * Auth: Required.
  */
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 import { requireAuth, getUserId } from '../_lib/auth'
+import { upsertGooglePlaceCacheSafe } from '../_lib/googlePlaceCache'
 import { hasuraAdmin } from '../_lib/hasura'
 import { ok, fail } from '../_lib/respond'
 import { validate } from '../_lib/validate'
 
 const MAX_ITEMS_PER_LIST = 200
 
-const AddItemSchema = z.object({
-  list_uuid: z.string().uuid(),
-  restaurant_uuid: z.string().uuid().optional(),
-  google_place_id: z.string().min(1).max(500).optional(),
-}).refine(
-  (d) => d.restaurant_uuid !== undefined || d.google_place_id !== undefined,
-  { message: 'At least one of restaurant_uuid or google_place_id is required' },
-)
+const AddItemSchema = z
+  .object({
+    list_uuid: z.string().uuid(),
+    restaurant_uuid: z.string().uuid().optional(),
+    google_place_id: z.string().min(1).max(500).optional(),
+    place_name: z.string().min(1).max(500).optional(),
+    place_address: z.string().max(1000).optional(),
+    place_photo_url: z.string().max(2000).optional(),
+    place_rating: z.number().min(0).max(5).optional(),
+    place_latitude: z.number().finite().optional(),
+    place_longitude: z.number().finite().optional(),
+    restaurant_slug: z.string().min(1).max(200).optional(),
+  })
+  .refine(
+    (d) => d.restaurant_uuid !== undefined || d.google_place_id !== undefined,
+    { message: 'At least one of restaurant_uuid or google_place_id is required' },
+  )
+  .refine(
+    (d) => !d.google_place_id?.trim() || (d.place_name?.trim()?.length ?? 0) > 0,
+    { message: 'place_name is required when google_place_id is provided' },
+  )
 
 const VERIFY_OWNERSHIP = `
   query VerifyListOwnership($uuid: uuid!, $ownerId: uuid!) {
@@ -158,6 +183,22 @@ export default async (req: Request, res: Response): Promise<void> => {
       restaurantUuid: body.restaurant_uuid ?? null,
       googlePlaceId: body.google_place_id ?? null,
     })
+
+    const googlePlaceId = body.google_place_id?.trim()
+    const placeName = body.place_name?.trim()
+    if (googlePlaceId && placeName) {
+      await upsertGooglePlaceCacheSafe({
+        google_place_id: googlePlaceId,
+        name: placeName,
+        formatted_address: body.place_address?.trim() || null,
+        latitude: body.place_latitude ?? null,
+        longitude: body.place_longitude ?? null,
+        primary_photo_url: body.place_photo_url?.trim() || null,
+        google_rating: body.place_rating ?? null,
+        tastyplates_restaurant_uuid: body.restaurant_uuid ?? null,
+        tastyplates_restaurant_slug: body.restaurant_slug ?? null,
+      })
+    }
 
     ok(res, { item: data.insert_recommended_restaurant_list_items_one }, 201)
   } catch (error) {

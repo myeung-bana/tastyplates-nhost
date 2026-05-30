@@ -504,11 +504,19 @@ secret. It is returned **only** to the owner (via `create-list`,
 // Add a linked TP listing
 { "list_uuid": "...", "restaurant_uuid": "..." }
 
-// Add a Google-only place
-{ "list_uuid": "...", "google_place_id": "ChIJ..." }
-
-// Add both at once (pre-linked)
-{ "list_uuid": "...", "restaurant_uuid": "...", "google_place_id": "ChIJ..." }
+// Add a Google place (place_name required — upserts google_place_cache for list display)
+{
+  "list_uuid": "...",
+  "google_place_id": "ChIJ...",
+  "place_name": "Restaurant Name",
+  "place_address": "123 Main St, Toronto, ON, Canada",
+  "place_photo_url": "https://...",
+  "place_rating": 4.5,
+  "place_latitude": 43.65,
+  "place_longitude": -79.38,
+  "restaurant_uuid": "...",
+  "restaurant_slug": "slug"
+}
 
 // Duplicate → 409
 ```

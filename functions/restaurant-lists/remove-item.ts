@@ -1,8 +1,8 @@
 /**
  * DELETE /v1/restaurant-lists/remove-item
  *
- * Removes an item from a user-owned list. Verifies both list ownership and
- * that the item actually belongs to the specified list before deleting.
+ * Removes an item from a user-owned list. Verifies list ownership and
+ * that the item belongs to the list (by list_id = list uuid) before deleting.
  *
  * Body: { list_uuid: string, item_id: number }
  * Auth: Required.
@@ -19,16 +19,19 @@ const RemoveItemSchema = z.object({
   item_id: z.number().int().positive(),
 })
 
-const VERIFY_ITEM_OWNERSHIP = `
-  query VerifyItemOwnership($listUuid: uuid!, $ownerId: uuid!, $itemId: Int!) {
+const VERIFY_LIST_OWNERSHIP = `
+  query VerifyListOwnership($listUuid: uuid!, $ownerId: uuid!) {
+    recommended_restaurant_lists(
+      where: { uuid: { _eq: $listUuid }, owner_id: { _eq: $ownerId } }
+      limit: 1
+    ) { uuid }
+  }
+`
+
+const VERIFY_ITEM_ON_LIST = `
+  query VerifyItemOnList($listUuid: uuid!, $itemId: Int!) {
     recommended_restaurant_list_items(
-      where: {
-        id: { _eq: $itemId }
-        list: {
-          uuid: { _eq: $listUuid }
-          owner_id: { _eq: $ownerId }
-        }
-      }
+      where: { id: { _eq: $itemId }, list_id: { _eq: $listUuid } }
       limit: 1
     ) { id }
   }
@@ -49,14 +52,22 @@ export default async (req: Request, res: Response): Promise<void> => {
     const body = validate(req, res, RemoveItemSchema)
     if (!body) return
 
-    type OwnerCheck = { recommended_restaurant_list_items: { id: number }[] }
-    const check = await hasuraAdmin<OwnerCheck>(VERIFY_ITEM_OWNERSHIP, {
+    type ListCheck = { recommended_restaurant_lists: { uuid: string }[] }
+    const listCheck = await hasuraAdmin<ListCheck>(VERIFY_LIST_OWNERSHIP, {
       listUuid: body.list_uuid,
       ownerId,
+    })
+    if ((listCheck.recommended_restaurant_lists ?? []).length === 0) {
+      fail(res, 'Item not found', 404)
+      return
+    }
+
+    type ItemCheck = { recommended_restaurant_list_items: { id: number }[] }
+    const itemCheck = await hasuraAdmin<ItemCheck>(VERIFY_ITEM_ON_LIST, {
+      listUuid: body.list_uuid,
       itemId: body.item_id,
     })
-
-    if ((check.recommended_restaurant_list_items ?? []).length === 0) {
+    if ((itemCheck.recommended_restaurant_list_items ?? []).length === 0) {
       fail(res, 'Item not found', 404)
       return
     }
