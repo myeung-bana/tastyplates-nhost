@@ -17,8 +17,6 @@ export interface RawListItem {
   sort_order: number
   restaurant_uuid: string | null
   google_place_id: string | null
-  restaurant_id: number | null
-  city_location_id: number | null
   created_at: string
   restaurant: {
     uuid: string

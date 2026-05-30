@@ -23,8 +23,7 @@ const LIST_ITEMS_BY_LIST_UUID = `
       where: { list_id: { _eq: $listUuid } }
       order_by: { sort_order: asc }
     ) {
-      id list_id sort_order restaurant_uuid google_place_id
-      restaurant_id city_location_id created_at
+      id list_id sort_order restaurant_uuid google_place_id created_at
       restaurant {
         uuid slug title featured_image_url average_rating
         address listing_street cuisines
