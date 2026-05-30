@@ -14,8 +14,8 @@
 import type { Request, Response } from 'express'
 import { hasuraAdmin } from '../_lib/hasura'
 import { ok, fail } from '../_lib/respond'
-import { fetchPlaceCache, enrichItems, buildListResponse } from '../_lib/listEnrichment'
-import type { RawList, RawListItem } from '../_lib/listEnrichment'
+import { buildEnrichedListResponse } from '../_lib/listDetail'
+import type { RawList } from '../_lib/listEnrichment'
 
 const GET_LIST_BY_SHARE_TOKEN = `
   query GetListByShareToken($shareToken: String!) {
@@ -42,7 +42,6 @@ export default async (req: Request, res: Response): Promise<void> => {
   try {
     const token = req.query.token as string | undefined
     if (!token || token.length < 10) {
-      // Generic 404 — don't hint that the parameter shape is wrong
       fail(res, 'List not found', 404)
       return
     }
@@ -52,20 +51,11 @@ export default async (req: Request, res: Response): Promise<void> => {
     const list = data.recommended_restaurant_lists?.[0]
 
     if (!list) {
-      // Always 404, never 403 — prevents information leakage
       fail(res, 'List not found', 404)
       return
     }
 
-    const googlePlaceIds = (list.items as RawListItem[])
-      .filter((i) => i.google_place_id && !i.restaurant_uuid)
-      .map((i) => i.google_place_id!)
-
-    const placeCache = await fetchPlaceCache(googlePlaceIds)
-    const enrichedItems = enrichItems(list.items as RawListItem[], placeCache)
-
-    // callerId=null so share_token is always stripped from the response
-    ok(res, { list: buildListResponse(list, enrichedItems, null) })
+    ok(res, { list: await buildEnrichedListResponse(list, null) })
   } catch (error) {
     console.error('[restaurant-lists/get-list-by-share-token]', error)
     fail(res, 'Failed to fetch list', 500)

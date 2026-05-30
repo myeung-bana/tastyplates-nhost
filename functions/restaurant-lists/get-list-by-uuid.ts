@@ -1,12 +1,9 @@
 /**
- * GET /v1/restaurant-lists/get-list-by-slug?slug=<slug>
+ * GET /v1/restaurant-lists/get-list-by-uuid?uuid=<list_uuid>
  *
- * Returns an enriched list by its slug.
- * - Public lists: accessible to anyone.
- * - Private lists: accessible to owner only (must include valid Bearer token).
- * - share_token is stripped from the response unless the caller is the owner.
+ * Same enriched payload as get-list-by-slug, keyed by list uuid (mobile detail route).
  *
- * Auth: Optional (improves access for private/own lists).
+ * Auth: Optional (required for private lists owned by the caller).
  */
 import type { Request, Response } from 'express'
 import { hasuraAdmin } from '../_lib/hasura'
@@ -18,10 +15,10 @@ import {
 } from '../_lib/listDetail'
 import type { RawList } from '../_lib/listEnrichment'
 
-const GET_LIST_BY_SLUG = `
-  query GetListBySlug($slug: String!) {
+const GET_LIST_BY_UUID = `
+  query GetListByUuid($uuid: uuid!) {
     recommended_restaurant_lists(
-      where: { slug: { _eq: $slug }, is_active: { _eq: true } }
+      where: { uuid: { _eq: $uuid }, is_active: { _eq: true } }
       limit: 1
     ) {
       id uuid slug title description display_pic is_public is_active
@@ -41,9 +38,9 @@ const GET_LIST_BY_SLUG = `
 
 export default async (req: Request, res: Response): Promise<void> => {
   try {
-    const slug = req.query.slug as string | undefined
-    if (!slug) {
-      fail(res, 'slug query param is required', 400)
+    const uuid = req.query.uuid as string | undefined
+    if (!uuid) {
+      fail(res, 'uuid query param is required', 400)
       return
     }
 
@@ -51,7 +48,7 @@ export default async (req: Request, res: Response): Promise<void> => {
     if (res.headersSent) return
 
     type Result = { recommended_restaurant_lists: RawList[] }
-    const data = await hasuraAdmin<Result>(GET_LIST_BY_SLUG, { slug })
+    const data = await hasuraAdmin<Result>(GET_LIST_BY_UUID, { uuid })
     const list = data.recommended_restaurant_lists?.[0]
 
     if (!list) {
@@ -66,7 +63,7 @@ export default async (req: Request, res: Response): Promise<void> => {
 
     ok(res, { list: await buildEnrichedListResponse(list, callerId) })
   } catch (error) {
-    console.error('[restaurant-lists/get-list-by-slug]', error)
+    console.error('[restaurant-lists/get-list-by-uuid]', error)
     fail(res, 'Failed to fetch list', 500)
   }
 }

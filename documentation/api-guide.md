@@ -433,6 +433,7 @@ Read endpoints for public content require no auth.
 | `DELETE` | `restaurant-lists/remove-item` | Bearer | Remove item by item_id |
 | `PATCH` | `restaurant-lists/reorder-items` | Bearer | Bulk-update sort_order |
 | `GET` | `restaurant-lists/get-list-by-slug?slug=` | Optional Bearer | Public or owner-only list by slug |
+| `GET` | `restaurant-lists/get-list-by-uuid?uuid=` | Optional Bearer | Same as get-list-by-slug; keyed by list uuid |
 | `GET` | `restaurant-lists/get-list-by-share-token?token=` | None | Capability-URL access for private lists |
 | `GET` | `restaurant-lists/get-public-lists?page=&limit=` | None | Paginated community lists |
 | `POST` | `restaurant-lists/regenerate-share-token` | Bearer | Invalidate old share link; issue new token |

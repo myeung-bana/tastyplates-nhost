@@ -35,6 +35,11 @@ const VERIFY_OWNERSHIP = `
       id
       items_aggregate: recommended_restaurant_list_items_aggregate { aggregate { count } }
     }
+    items_count_direct: recommended_restaurant_list_items_aggregate(
+      where: { list_id: { _eq: $uuid } }
+    ) {
+      aggregate { count }
+    }
   }
 `
 
@@ -95,6 +100,7 @@ export default async (req: Request, res: Response): Promise<void> => {
         id: number
         items_aggregate: { aggregate: { count: number } }
       }>
+      items_count_direct: { aggregate: { count: number } }
     }
     const check = await hasuraAdmin<OwnerCheck>(VERIFY_OWNERSHIP, {
       uuid: body.list_uuid,
@@ -107,7 +113,9 @@ export default async (req: Request, res: Response): Promise<void> => {
     }
 
     const listUuid = body.list_uuid
-    const currentCount = listRows[0].items_aggregate.aggregate.count
+    const relCount = listRows[0].items_aggregate.aggregate.count
+    const directCount = check.items_count_direct?.aggregate?.count ?? 0
+    const currentCount = Math.max(relCount, directCount)
 
     if (currentCount >= MAX_ITEMS_PER_LIST) {
       fail(res, `Lists are capped at ${MAX_ITEMS_PER_LIST} items`, 422)
