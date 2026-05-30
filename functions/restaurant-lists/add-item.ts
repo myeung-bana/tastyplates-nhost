@@ -38,36 +38,40 @@ const VERIFY_OWNERSHIP = `
   }
 `
 
-const CHECK_DUPLICATE = `
-  query CheckDuplicate($listId: Int!, $restaurantUuid: uuid, $googlePlaceId: String) {
+/** Only match on identifiers that were sent — avoid `restaurant_uuid IS NULL` matching all Google-only rows. */
+const CHECK_DUPLICATE_BY_RESTAURANT = `
+  query CheckDuplicateByRestaurant($listUuid: uuid!, $restaurantUuid: uuid!) {
     recommended_restaurant_list_items(
-      where: {
-        list_id: { _eq: $listId }
-        _or: [
-          { restaurant_uuid: { _eq: $restaurantUuid } }
-          { google_place_id: { _eq: $googlePlaceId } }
-        ]
-      }
+      where: { list_id: { _eq: $listUuid }, restaurant_uuid: { _eq: $restaurantUuid } }
+      limit: 1
+    ) { id }
+  }
+`
+
+const CHECK_DUPLICATE_BY_GOOGLE = `
+  query CheckDuplicateByGoogle($listUuid: uuid!, $googlePlaceId: String!) {
+    recommended_restaurant_list_items(
+      where: { list_id: { _eq: $listUuid }, google_place_id: { _eq: $googlePlaceId } }
       limit: 1
     ) { id }
   }
 `
 
 const GET_MAX_SORT_ORDER = `
-  query GetMaxSortOrder($listId: Int!) {
+  query GetMaxSortOrder($listUuid: uuid!) {
     recommended_restaurant_list_items_aggregate(
-      where: { list_id: { _eq: $listId } }
+      where: { list_id: { _eq: $listUuid } }
     ) { aggregate { max { sort_order } } }
   }
 `
 
 const INSERT_ITEM = `
   mutation InsertListItem(
-    $listId: Int!, $sortOrder: Int!,
+    $listUuid: uuid!, $sortOrder: Int!,
     $restaurantUuid: uuid, $googlePlaceId: String
   ) {
     insert_recommended_restaurant_list_items_one(object: {
-      list_id: $listId
+      list_id: $listUuid
       sort_order: $sortOrder
       restaurant_uuid: $restaurantUuid
       google_place_id: $googlePlaceId
@@ -102,7 +106,7 @@ export default async (req: Request, res: Response): Promise<void> => {
       return
     }
 
-    const listId = listRows[0].id
+    const listUuid = body.list_uuid
     const currentCount = listRows[0].items_aggregate.aggregate.count
 
     if (currentCount >= MAX_ITEMS_PER_LIST) {
@@ -110,27 +114,38 @@ export default async (req: Request, res: Response): Promise<void> => {
       return
     }
 
-    // Duplicate check — 409 if already in list
+    // Duplicate check — 409 if same TP uuid and/or same Google place_id already on list
     type DupCheck = { recommended_restaurant_list_items: { id: number }[] }
-    const dup = await hasuraAdmin<DupCheck>(CHECK_DUPLICATE, {
-      listId,
-      restaurantUuid: body.restaurant_uuid ?? null,
-      googlePlaceId: body.google_place_id ?? null,
-    })
-    if ((dup.recommended_restaurant_list_items ?? []).length > 0) {
-      fail(res, 'Item already in list', 409)
-      return
+    if (body.restaurant_uuid) {
+      const dup = await hasuraAdmin<DupCheck>(CHECK_DUPLICATE_BY_RESTAURANT, {
+        listUuid,
+        restaurantUuid: body.restaurant_uuid,
+      })
+      if ((dup.recommended_restaurant_list_items ?? []).length > 0) {
+        fail(res, 'Item already in list', 409)
+        return
+      }
+    }
+    if (body.google_place_id) {
+      const dup = await hasuraAdmin<DupCheck>(CHECK_DUPLICATE_BY_GOOGLE, {
+        listUuid,
+        googlePlaceId: body.google_place_id,
+      })
+      if ((dup.recommended_restaurant_list_items ?? []).length > 0) {
+        fail(res, 'Item already in list', 409)
+        return
+      }
     }
 
     // Append at end
     type MaxSort = { recommended_restaurant_list_items_aggregate: { aggregate: { max: { sort_order: number | null } } } }
-    const maxData = await hasuraAdmin<MaxSort>(GET_MAX_SORT_ORDER, { listId })
+    const maxData = await hasuraAdmin<MaxSort>(GET_MAX_SORT_ORDER, { listUuid })
     const maxOrder = maxData.recommended_restaurant_list_items_aggregate.aggregate.max.sort_order ?? 0
     const sortOrder = maxOrder + 1
 
     type InsertResult = { insert_recommended_restaurant_list_items_one: unknown }
     const data = await hasuraAdmin<InsertResult>(INSERT_ITEM, {
-      listId,
+      listUuid,
       sortOrder,
       restaurantUuid: body.restaurant_uuid ?? null,
       googlePlaceId: body.google_place_id ?? null,

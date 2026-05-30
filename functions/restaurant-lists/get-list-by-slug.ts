@@ -22,7 +22,7 @@ const GET_LIST_BY_SLUG = `
       where: { slug: { _eq: $slug }, is_active: { _eq: true } }
       limit: 1
     ) {
-      id uuid slug title description is_public is_active
+      id uuid slug title description display_pic is_public is_active
       share_token owner_id created_at updated_at
       owner { id displayName avatarUrl }
       items: recommended_restaurant_list_items(order_by: { sort_order: asc }) {

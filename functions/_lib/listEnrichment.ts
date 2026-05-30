@@ -39,6 +39,7 @@ export interface RawList {
   slug: string
   title: string
   description: string | null
+  display_pic?: string | null
   is_public: boolean
   is_active: boolean
   share_token: string | null
@@ -142,12 +143,16 @@ export function buildListResponse(
   callerId: string | null,
 ): Record<string, unknown> {
   const isOwner = callerId !== null && callerId === list.owner_id
+  const displayPic = list.display_pic?.trim() || null
+  const firstItemImage = enrichedItems[0]?.image_url?.trim() || null
   return {
     id: list.id,
     uuid: list.uuid,
     slug: list.slug,
     title: list.title,
     description: list.description,
+    display_pic: displayPic,
+    cover_image_url: displayPic || firstItemImage,
     is_public: list.is_public,
     is_active: list.is_active,
     // share_token only returned to the owner

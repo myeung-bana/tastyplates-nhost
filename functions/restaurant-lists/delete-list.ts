@@ -28,9 +28,9 @@ const VERIFY_OWNERSHIP = `
 `
 
 const DELETE_ITEMS = `
-  mutation DeleteListItems($listId: Int!) {
+  mutation DeleteListItems($listUuid: uuid!) {
     delete_recommended_restaurant_list_items(
-      where: { list_id: { _eq: $listId } }
+      where: { list_id: { _eq: $listUuid } }
     ) { affected_rows }
   }
 `
@@ -63,10 +63,8 @@ export default async (req: Request, res: Response): Promise<void> => {
       return
     }
 
-    const listId = rows[0].id
-
     // Explicit cascade: delete items first, then the list
-    await hasuraAdmin(DELETE_ITEMS, { listId })
+    await hasuraAdmin(DELETE_ITEMS, { listUuid: body.list_uuid })
     await hasuraAdmin(DELETE_LIST, { uuid: body.list_uuid })
 
     ok(res, { deleted: true })
