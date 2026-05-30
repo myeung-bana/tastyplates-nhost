@@ -427,7 +427,7 @@ Read endpoints for public content require no auth.
 | `GET` | `restaurant-lists/get-my-lists` | Bearer | Owner's lists with per-list `items_count` and cover (`display_pic`) |
 | `POST` | `restaurant-lists/claim-lists` | Bearer | Set `owner_id` on orphan lists (`owner_id` was NULL) |
 | `POST` | `restaurant-lists/create-list` | Bearer | Create list; server generates slug + share_token |
-| `PATCH` | `restaurant-lists/update-list` | Bearer | Edit title, description, is_public |
+| `PATCH` | `restaurant-lists/update-list` | Bearer | Edit title, description, is_public, display_pic |
 | `DELETE` | `restaurant-lists/delete-list` | Bearer | Delete list and all its items |
 | `POST` | `restaurant-lists/add-item` | Bearer | Add restaurant to a list (TP uuid or Google place_id) |
 | `DELETE` | `restaurant-lists/remove-item` | Bearer | Remove item by item_id |
@@ -447,7 +447,7 @@ Lists created in the Console without `owner_id` will not appear until claimed.
 Response fields:
 - `items_count` — count of rows in `recommended_restaurant_list_items` for that list
   (nested `recommended_restaurant_list_items_aggregate` on `recommended_restaurant_lists`).
-- `display_pic` — user-supplied cover image URL stored on the list row (text column).
+- `display_pic` — user-supplied cover image URL stored on the list row (text column). Set via `POST upload/image` → S3 `fileUrl`, then `POST create-list` or `PATCH update-list` with that HTTPS URL.
 - `cover_image_url` — `display_pic` when set; otherwise null (first-item restaurant photo
   fallback can be added later via nested `recommended_restaurant_list_items`).
 
@@ -478,8 +478,8 @@ Only rows with `owner_id IS NULL` and a matching `uuid` are updated.
 
 **`POST create-list`**
 ```json
-// Request body
-{ "title": "Best Ramen in HK", "description": "...", "is_public": false }
+// Request body (display_pic optional — HTTPS URL from POST upload/image)
+{ "title": "Best Ramen in HK", "description": "...", "is_public": false, "display_pic": "https://..." }
 
 // Response 201
 {

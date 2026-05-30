@@ -1,7 +1,7 @@
 /**
  * PATCH /v1/restaurant-lists/update-list
  *
- * Body: { list_uuid: string, title?: string, description?: string, is_public?: boolean }
+ * Body: { list_uuid: string, title?: string, description?: string, is_public?: boolean, display_pic?: string | null }
  */
 import type { Request, Response } from 'express'
 import { z } from 'zod'
@@ -10,14 +10,26 @@ import { hasuraAdmin } from '../_lib/hasura'
 import { ok, fail } from '../_lib/respond'
 import { validate } from '../_lib/validate'
 
+const httpUrlSchema = z
+  .string()
+  .max(2048)
+  .refine((s) => s.startsWith('http'), { message: 'display_pic must be an http(s) URL' })
+
+const displayPicSchema = z.union([httpUrlSchema, z.literal(''), z.null()])
+
 const UpdateListSchema = z.object({
   list_uuid: z.string().uuid(),
   title: z.string().min(1).max(100).optional(),
   description: z.string().max(500).optional(),
   is_public: z.boolean().optional(),
+  display_pic: displayPicSchema.optional(),
 }).refine(
-  (d) => d.title !== undefined || d.description !== undefined || d.is_public !== undefined,
-  { message: 'At least one of title, description, or is_public must be provided' },
+  (d) =>
+    d.title !== undefined ||
+    d.description !== undefined ||
+    d.is_public !== undefined ||
+    d.display_pic !== undefined,
+  { message: 'At least one field must be provided' },
 )
 
 const VERIFY_OWNERSHIP = `
@@ -36,7 +48,7 @@ const UPDATE_LIST = `
       _set: $set
     ) {
       returning {
-        id uuid slug title description is_public updated_at
+        id uuid slug title description display_pic is_public updated_at
       }
     }
   }
@@ -65,6 +77,10 @@ export default async (req: Request, res: Response): Promise<void> => {
     if (body.title !== undefined) set.title = body.title
     if (body.description !== undefined) set.description = body.description
     if (body.is_public !== undefined) set.is_public = body.is_public
+    if (body.display_pic !== undefined) {
+      const pic = body.display_pic
+      set.display_pic = pic === '' || pic === null ? null : pic
+    }
 
     type Result = { update_recommended_restaurant_lists: { returning: unknown[] } }
     const data = await hasuraAdmin<Result>(UPDATE_LIST, { uuid: body.list_uuid, set })

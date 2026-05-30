@@ -1,7 +1,7 @@
 /**
  * POST /v1/restaurant-lists/create-list
  *
- * Body: { title: string, description?: string, is_public?: boolean }
+ * Body: { title: string, description?: string, is_public?: boolean, display_pic?: string }
  * Default is_public: true (public list).
  */
 import type { Request, Response } from 'express'
@@ -16,6 +16,11 @@ const CreateListSchema = z.object({
   title: z.string().min(1).max(100),
   description: z.string().max(500).optional().default(''),
   is_public: z.boolean().default(true),
+  display_pic: z
+    .string()
+    .max(2048)
+    .refine((s) => s.startsWith('http'), { message: 'display_pic must be an http(s) URL' })
+    .optional(),
 })
 
 const CHECK_SLUG_EXISTS = `
@@ -30,7 +35,8 @@ const CHECK_SLUG_EXISTS = `
 const CREATE_LIST = `
   mutation CreateList(
     $ownerId: uuid!, $slug: String!, $title: String!,
-    $description: String!, $isPublic: Boolean!, $shareToken: String!
+    $description: String!, $isPublic: Boolean!, $shareToken: String!,
+    $displayPic: String
   ) {
     insert_recommended_restaurant_lists_one(object: {
       owner_id: $ownerId
@@ -40,8 +46,9 @@ const CREATE_LIST = `
       is_public: $isPublic
       share_token: $shareToken
       is_active: true
+      display_pic: $displayPic
     }) {
-      id uuid slug title description is_public share_token created_at updated_at
+      id uuid slug title description display_pic is_public share_token created_at updated_at
     }
   }
 `
@@ -93,6 +100,7 @@ export default async (req: Request, res: Response): Promise<void> => {
       description: body.description ?? '',
       isPublic: body.is_public,
       shareToken,
+      displayPic: body.display_pic?.trim() || null,
     })
 
     ok(res, { list: data.insert_recommended_restaurant_lists_one }, 201)
