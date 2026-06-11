@@ -348,8 +348,9 @@ List/detail review handlers query Hasura via the **`author`** relationship (`res
 
 | Path | Typical method | Auth | Description |
 |---|---|---|---|
-| `upload/image` | POST | Bearer | Multipart image upload to S3 |
-| `upload/batch` | POST | Bearer | Multipart batch upload |
+| `upload/image` | POST | Bearer | Multipart image → Sharp → Nhost Storage (`tasty-bucket`) + `media_assets` catalog |
+| `upload/batch` | POST | Bearer | Multipart batch upload (same pipeline per file) |
+| `admin/migrate-media` | POST | `x-admin-secret` | Migrate legacy S3 URLs on profiles/lists to Nhost Storage |
 | `images/download-google-photo` | POST | None | Download Google photo URL and return data URL |
 
 ### 8.8 Articles
@@ -447,7 +448,7 @@ Lists created in the Console without `owner_id` will not appear until claimed.
 Response fields:
 - `items_count` — count of rows in `recommended_restaurant_list_items` for that list
   (nested `recommended_restaurant_list_items_aggregate` on `recommended_restaurant_lists`).
-- `display_pic` — user-supplied cover image URL stored on the list row (text column). Set via `POST upload/image` → S3 `fileUrl`, then `POST create-list` or `PATCH update-list` with that HTTPS URL.
+- `display_pic` — user-supplied cover image URL stored on the list row (text column). Set via `POST upload/image` → `fileUrl`, then `POST create-list` or `PATCH update-list` with that HTTPS URL.
 - `cover_image_url` — `display_pic` when set; otherwise null (first-item restaurant photo
   fallback can be added later via nested `recommended_restaurant_list_items`).
 
