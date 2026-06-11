@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto'
 
 import { hasuraAdmin } from '../hasura'
-import { isS3Backend } from './config'
 import { nhostStorageFileExists } from './nhostStorage'
 
 export function sha256hex(buf: Buffer): string {
@@ -26,15 +25,13 @@ const DEDUP_QUERY = `
 
 const INSERT_ASSET = `
   mutation InsertMediaAsset(
-    $storageFileId: uuid
+    $storageFileId: uuid!
     $publicUrl: String!
     $sha256: String
     $fileSize: bigint
     $contentType: String
     $originalName: String
     $uploadedBy: uuid!
-    $s3Key: String
-    $s3Bucket: String
   ) {
     insert_media_assets_one(object: {
       storage_file_id: $storageFileId
@@ -44,8 +41,6 @@ const INSERT_ASSET = `
       content_type: $contentType
       original_name: $originalName
       uploaded_by: $uploadedBy
-      s3_key: $s3Key
-      s3_bucket: $s3Bucket
     }) {
       uuid
       public_url
@@ -56,13 +51,11 @@ const INSERT_ASSET = `
 const UPDATE_ASSET = `
   mutation UpdateMediaAsset(
     $uuid: uuid!
-    $storageFileId: uuid
+    $storageFileId: uuid!
     $publicUrl: String!
     $sha256: String
     $fileSize: bigint
     $contentType: String
-    $s3Key: String
-    $s3Bucket: String
   ) {
     update_media_assets(
       where: { uuid: { _eq: $uuid } }
@@ -72,8 +65,8 @@ const UPDATE_ASSET = `
         sha256: $sha256
         file_size: $fileSize
         content_type: $contentType
-        s3_key: $s3Key
-        s3_bucket: $s3Bucket
+        s3_key: null
+        s3_bucket: null
       }
     ) {
       returning { uuid public_url }
@@ -82,117 +75,95 @@ const UPDATE_ASSET = `
 `
 
 export async function findCatalogRowByHash(hash: string): Promise<CatalogRow | null> {
-  try {
-    const data = await hasuraAdmin<{ media_assets: CatalogRow[] }>(DEDUP_QUERY, { sha256: hash })
-    return data.media_assets?.[0] ?? null
-  } catch {
-    return null
-  }
+  const data = await hasuraAdmin<{ media_assets: CatalogRow[] }>(DEDUP_QUERY, { sha256: hash })
+  return data.media_assets?.[0] ?? null
 }
 
 async function insertCatalogRow(params: {
-  storageFileId: string | null
+  storageFileId: string
   publicUrl: string
   sha256: string
   fileSize: number
   contentType: string
   originalName: string
   uploadedBy: string
-  s3Key?: string | null
-  s3Bucket?: string | null
-}): Promise<string | null> {
-  try {
-    const data = await hasuraAdmin<{
-      insert_media_assets_one: { uuid: string } | null
-    }>(INSERT_ASSET, {
-      storageFileId: params.storageFileId,
-      publicUrl: params.publicUrl,
-      sha256: params.sha256,
-      fileSize: params.fileSize,
-      contentType: params.contentType,
-      originalName: params.originalName,
-      uploadedBy: params.uploadedBy,
-      s3Key: params.s3Key ?? null,
-      s3Bucket: params.s3Bucket ?? null,
-    })
-    return data.insert_media_assets_one?.uuid ?? null
-  } catch (e) {
-    console.warn('[media-upload] catalog insert skipped:', e)
-    return null
+}): Promise<string> {
+  const data = await hasuraAdmin<{
+    insert_media_assets_one: { uuid: string } | null
+  }>(INSERT_ASSET, {
+    storageFileId: params.storageFileId,
+    publicUrl: params.publicUrl,
+    sha256: params.sha256,
+    fileSize: params.fileSize,
+    contentType: params.contentType,
+    originalName: params.originalName,
+    uploadedBy: params.uploadedBy,
+  })
+
+  const uuid = data.insert_media_assets_one?.uuid
+  if (!uuid) {
+    throw new Error('Failed to save media catalog entry')
   }
+  return uuid
 }
 
 async function updateCatalogRow(
   uuid: string,
   params: {
-    storageFileId: string | null
+    storageFileId: string
     publicUrl: string
     sha256: string
     fileSize: number
     contentType: string
-    s3Key?: string | null
-    s3Bucket?: string | null
   },
 ): Promise<void> {
-  try {
-    await hasuraAdmin(UPDATE_ASSET, {
-      uuid,
-      storageFileId: params.storageFileId,
-      publicUrl: params.publicUrl,
-      sha256: params.sha256,
-      fileSize: params.fileSize,
-      contentType: params.contentType,
-      s3Key: params.s3Key ?? null,
-      s3Bucket: params.s3Bucket ?? null,
-    })
-  } catch (e) {
-    console.warn('[media-upload] catalog update skipped:', e)
+  const data = await hasuraAdmin<{
+    update_media_assets: { returning: Array<{ uuid: string }> }
+  }>(UPDATE_ASSET, {
+    uuid,
+    storageFileId: params.storageFileId,
+    publicUrl: params.publicUrl,
+    sha256: params.sha256,
+    fileSize: params.fileSize,
+    contentType: params.contentType,
+  })
+
+  if (!data.update_media_assets?.returning?.length) {
+    throw new Error('Failed to update media catalog entry')
   }
 }
 
-/** Returns existing URL when dedup hits; null when caller should upload. */
+/**
+ * Returns existing Nhost Storage URL when dedup hits.
+ * Legacy rows without storage_file_id fall through so caller re-uploads to Nhost.
+ */
 export async function tryDedupExisting(
   hash: string,
 ): Promise<{ fileUrl: string; filePath: string; mediaUuid: string; deduped: true } | null> {
-  if (isS3Backend()) return null
-
   const existing = await findCatalogRowByHash(hash)
-  if (!existing) return null
+  if (!existing?.storage_file_id) return null
 
-  if (existing.storage_file_id) {
-    const ok = await nhostStorageFileExists(existing.storage_file_id)
-    if (ok) {
-      return {
-        fileUrl: existing.public_url,
-        filePath: `storage/${existing.storage_file_id}`,
-        mediaUuid: existing.uuid,
-        deduped: true,
-      }
-    }
-  } else if (existing.public_url) {
-    return {
-      fileUrl: existing.public_url,
-      filePath: existing.public_url,
-      mediaUuid: existing.uuid,
-      deduped: true,
-    }
+  const exists = await nhostStorageFileExists(existing.storage_file_id)
+  if (!exists) return null
+
+  return {
+    fileUrl: existing.public_url,
+    filePath: `storage/${existing.storage_file_id}`,
+    mediaUuid: existing.uuid,
+    deduped: true,
   }
-
-  return null
 }
 
 export async function recordCatalogUpload(params: {
   existingUuid?: string | null
-  storageFileId: string | null
+  storageFileId: string
   publicUrl: string
   sha256: string
   fileSize: number
   contentType: string
   originalName: string
   uploadedBy: string
-  s3Key?: string | null
-  s3Bucket?: string | null
-}): Promise<string | null> {
+}): Promise<string> {
   if (params.existingUuid) {
     await updateCatalogRow(params.existingUuid, {
       storageFileId: params.storageFileId,
@@ -200,8 +171,6 @@ export async function recordCatalogUpload(params: {
       sha256: params.sha256,
       fileSize: params.fileSize,
       contentType: params.contentType,
-      s3Key: params.s3Key,
-      s3Bucket: params.s3Bucket,
     })
     return params.existingUuid
   }

@@ -1,15 +1,16 @@
 import type { Request, Response } from 'express'
 
 import { getUserId, requireAuth } from '../_lib/auth'
-import { BATCH_MAX_FILES } from '../_lib/media-upload/config'
-import { parseMultipleFiles } from '../_lib/media-upload/parseMultipart'
-import { processMediaUpload } from '../_lib/media-upload/processUpload'
 import { fail, ok } from '../_lib/respond'
 
 export default async (req: Request, res: Response): Promise<void> => {
   try {
     const payload = await requireAuth(req, res)
     if (!payload) return
+
+    const { BATCH_MAX_FILES } = await import('../_lib/media-upload/config')
+    const { parseMultipleFiles } = await import('../_lib/media-upload/parseMultipart')
+    const { processMediaUpload } = await import('../_lib/media-upload/processUpload')
 
     const userId = getUserId(payload)
     const files = await parseMultipleFiles(req, BATCH_MAX_FILES)

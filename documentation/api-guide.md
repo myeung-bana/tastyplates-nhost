@@ -136,7 +136,7 @@ The functions runtime gets a mix of Nhost system variables and project secrets. 
 | `HASURA_GRAPHQL_ENDPOINT` | `HASURA_GRAPHQL_ENDPOINT` | Optional explicit GraphQL URL override |
 | Nhost platform | `NHOST_GRAPHQL_URL` | Preferred GraphQL endpoint |
 | Nhost platform | `NHOST_SUBDOMAIN`, `NHOST_REGION` | Runtime metadata and GraphQL URL fallback |
-| project secrets | `S3_*`, `IMAGE_*`, etc. | Upload and image processing |
+| project secrets | `MEDIA_STORAGE_BUCKET`, `IMAGE_*`, etc. | Nhost Storage upload and image processing |
 
 Important details:
 
@@ -350,7 +350,7 @@ List/detail review handlers query Hasura via the **`author`** relationship (`res
 |---|---|---|---|
 | `upload/image` | POST | Bearer | Multipart image → Sharp → Nhost Storage (`tasty-bucket`) + `media_assets` catalog |
 | `upload/batch` | POST | Bearer | Multipart batch upload (same pipeline per file) |
-| `admin/migrate-media` | POST | `x-admin-secret` | Migrate legacy S3 URLs on profiles/lists to Nhost Storage |
+| `admin/migrate-media` | POST | `x-admin-secret` | Migrate legacy S3 URLs (profiles, lists, restaurants, review images) to Nhost Storage |
 | `images/download-google-photo` | POST | None | Download Google photo URL and return data URL |
 
 ### 8.8 Articles
