@@ -6,7 +6,7 @@ const GET_RESTAURANTS_LIST = `
   query GetRestaurantsList($limit: Int, $offset: Int, $where: restaurants_bool_exp, $order_by: [restaurants_order_by!]) {
     restaurants(limit: $limit offset: $offset where: $where order_by: $order_by) {
       id uuid title slug status price_range_id average_rating ratings_count listing_street
-      longitude latitude featured_image_url address cuisines palates categories
+      longitude latitude featured_image_url address google_place_id cuisines palates categories
       is_main_location created_at updated_at published_at
     }
     restaurants_aggregate(where: $where) { aggregate { count } }
