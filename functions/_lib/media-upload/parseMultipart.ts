@@ -1,16 +1,23 @@
+import { Readable } from 'stream'
 import type { Request } from 'express'
 import Busboy from 'busboy'
 
 import type { ParsedUploadFile } from './types'
 import { BATCH_MAX_FILES } from './config'
 
-/** Nhost Functions pre-buffer multipart bodies as `rawBody`; the stream may already be drained. */
+/**
+ * Nhost Functions pre-buffer multipart bodies into `req.rawBody`.
+ * Using `busboy.end(rawBody)` causes a race: busboy fires `finish` before file
+ * streams drain, so `resolved` is still false → "No file received".
+ * Piping a `Readable` created from the buffer preserves normal stream semantics —
+ * `finish` only fires after all file chunks have been emitted.
+ */
 type NhostRequest = Request & { rawBody?: Buffer }
 
 function feedBusboy(req: NhostRequest, busboy: ReturnType<typeof Busboy>): void {
   const rawBody = req.rawBody
   if (rawBody?.length) {
-    busboy.end(rawBody)
+    Readable.from(rawBody).pipe(busboy)
   } else {
     req.pipe(busboy)
   }
