@@ -1,4 +1,9 @@
 -- media_assets catalog for Nhost Storage uploads (see tastyplates-mobile/documentation/functions/media-upload.md)
+--
+-- WARNING: Production Tastyplates already has a LEGACY media_assets table (PK `id`, `s3_key`, `size_bytes`).
+-- Do NOT run this on production — CREATE TABLE IF NOT EXISTS will skip and leave the wrong shape.
+-- Use documentation/migrations/add_media_assets_legacy_patch.sql only on empty databases.
+-- Functions map Nhost Storage → s3_key + s3_bucket (see media_assets-hasura-setup.md).
 
 CREATE TABLE IF NOT EXISTS media_assets (
   id              BIGSERIAL     PRIMARY KEY,

@@ -236,6 +236,7 @@ curl -sS -X POST "$BASE/upload/image" \
 | `Storage upload failed (4xx/5xx)` | Bucket missing, wrong `MEDIA_STORAGE_BUCKET`, or admin secret | Create bucket; fix secrets; redeploy |
 | `Failed to save media catalog entry` | `media_assets` not tracked or admin secret wrong | Run DDL; track table; verify `HASURA_GRAPHQL_ADMIN_SECRET` |
 | `field 'media_assets' not found` | Table not tracked | Track in Console |
+| `field 'uuid' not found in type: 'media_assets'` | Legacy table uses `id` not `uuid` | Deploy latest `mediaAssetsCatalog.ts`; reload Hasura metadata |
 | File in Storage but app shows error | Catalog insert failed after storage POST | Check function logs after storage step; fix Hasura |
 | `deduped: true` but image 404 | Orphan catalog row (storage file deleted) | Re-upload same file — pipeline repairs row |
 

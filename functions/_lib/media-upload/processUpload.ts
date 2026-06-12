@@ -37,7 +37,7 @@ export async function processMediaUpload(
   )
 
   const mediaUuid = await recordCatalogUpload({
-    existingUuid: existingRow?.uuid ?? null,
+    existingUuid: existingRow?.id ?? null,
     storageFileId: fileId,
     publicUrl,
     sha256: hash,
