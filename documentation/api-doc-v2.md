@@ -1,5 +1,7 @@
 # Tastyplates Nhost — API & Hasura (v2)
 
+> **Superseded by [api-doc-v3.md](./api-doc-v3.md)** — v3 adds Nhost Storage uploads, `media_assets`, restaurant-lists Hasura notes, and upload troubleshooting. This file is kept for historical review-feed deploy context.
+
 Combined reference for **Hasura metadata**, **deploy operations**, and how they connect to **Nhost Functions** and the mobile app.
 
 | Doc | Scope |

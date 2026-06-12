@@ -2,7 +2,7 @@
 
 This document describes every HTTP function exposed by `tastyplates-nhost/functions`, how URLs are formed, how authentication works, and how to call the API from a frontend or backend client.
 
-For code-writing rules, see [AI_rules.md](./AI_rules.md). For migration context from Next.js `/api/v1`, see [decouple-plan.md](./decouple-plan.md). For Hasura metadata, deploy, and troubleshooting, see [api-doc-v2.md](./api-doc-v2.md).
+For code-writing rules, see [AI_rules.md](./AI_rules.md). For migration context from Next.js `/api/v1`, see [decouple-plan.md](./decouple-plan.md). For Hasura metadata, deploy, media upload infra, and troubleshooting, see [api-doc-v3.md](./api-doc-v3.md).
 
 ---
 
