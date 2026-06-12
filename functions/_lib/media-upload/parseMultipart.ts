@@ -4,6 +4,18 @@ import Busboy from 'busboy'
 import type { ParsedUploadFile } from './types'
 import { BATCH_MAX_FILES } from './config'
 
+/** Nhost Functions pre-buffer multipart bodies as `rawBody`; the stream may already be drained. */
+type NhostRequest = Request & { rawBody?: Buffer }
+
+function feedBusboy(req: NhostRequest, busboy: ReturnType<typeof Busboy>): void {
+  const rawBody = req.rawBody
+  if (rawBody?.length) {
+    busboy.end(rawBody)
+  } else {
+    req.pipe(busboy)
+  }
+}
+
 function collectFileStream(
   stream: NodeJS.ReadableStream,
   info: { mimeType: string; filename: string },
@@ -46,7 +58,7 @@ export function parseSingleFile(req: Request): Promise<ParsedUploadFile> {
       if (!resolved) reject(new Error('No file received'))
     })
 
-    req.pipe(busboy)
+    feedBusboy(req, busboy)
   })
 }
 
@@ -81,6 +93,6 @@ export function parseMultipleFiles(
         .catch(reject)
     })
 
-    req.pipe(busboy)
+    feedBusboy(req, busboy)
   })
 }
