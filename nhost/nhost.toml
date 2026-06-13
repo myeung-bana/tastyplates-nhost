@@ -37,7 +37,25 @@ version = '0.50.0'
 mode = 'disabled'
 
 [auth.redirections]
-clientUrl = 'http://localhost:3000'
+# Git-deployed — overwrites Nhost Dashboard redirect settings on each deploy.
+# Web OAuth uses bare origin; mobile uses tastyplates:// deep links (see useGoogleSignIn.ts).
+clientUrl = 'https://tastyplates.co'
+allowedUrls = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3000/reset-password',
+  'https://tastyplates.co',
+  'https://www.tastyplates.co',
+  'https://tastyplates.co/reset-password',
+  'https://www.tastyplates.co/reset-password',
+  'https://*.vercel.app',
+  'tastyplates://login',
+  'tastyplates://reset-password',
+  'tastyplates://user-verification',
+  'exp+tastyplates://login',
+  'exp+tastyplates://reset-password',
+  'exp+tastyplates://user-verification',
+]
 
 [auth.signUp]
 enabled = true
