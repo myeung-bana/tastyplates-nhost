@@ -52,9 +52,15 @@ allowedUrls = [
   'tastyplates://login',
   'tastyplates://reset-password',
   'tastyplates://user-verification',
+  'tastyplates:///login',
+  'tastyplates:///reset-password',
+  'tastyplates:///user-verification',
   'exp+tastyplates://login',
   'exp+tastyplates://reset-password',
   'exp+tastyplates://user-verification',
+  'exp+tastyplates:///login',
+  'exp+tastyplates:///reset-password',
+  'exp+tastyplates:///user-verification',
 ]
 
 [auth.signUp]

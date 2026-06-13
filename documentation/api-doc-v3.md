@@ -472,3 +472,88 @@ Fixing review-feed metadata does **not** automatically fix My Lists or uploads �
 | `tastyplates-mobile/documentation/functions/media-upload.md` | Canonical cross-repo upload spec |
 
 When in doubt about an HTTP contract, open the handler under `functions/` or see [api-guide.md](./api-guide.md).
+
+---
+
+## Part 5 — Auth & registration (mobile + web)
+
+Nhost Auth (`nhost/nhost.toml`) owns identity (`auth.users`). **`user_profiles`** is created separately via Functions — the mobile app must call **`POST restaurant-users/create-restaurant-user`** once a Bearer session exists.
+
+### Nhost Auth settings (current)
+
+| Setting | Value | Client impact |
+|---------|-------|----------------|
+| `[auth.signUp] enabled` | `true` | Email registration allowed |
+| `emailVerificationRequired` | `true` | Sign-up may end **without** a session until the user verifies |
+| `passwordMinLength` | **9** | Validate passwords client-side before `signUp` |
+| `[auth.redirections] allowedUrls` | web + `tastyplates://…` deep links | `redirectTo` on sign-up / OAuth / verification must match |
+
+SMTP (Mailgun) is configured under `[provider.smtp]` for verification and password-reset emails.
+
+### Registration pipeline
+
+```
+1. Client: nhost.auth.signUp({ email, password, options: { displayName, redirectTo } })
+           redirectTo = mobile deep link → tastyplates://user-verification (or exp+tastyplates://…)
+2. Nhost:  creates auth.users, sends verification email (if required)
+3. Client: if session exists → POST create-restaurant-user (Bearer)
+           if no session (needsEmailVerification) → store email locally for resend; defer step 3
+4. User:   opens verification link → session restored → refreshSession
+5. Client: ensureRestaurantUserProfile → POST create-restaurant-user (placeholder username)
+6. Client: OnboardingGate → onboarding steps → POST update-restaurant-user (username, palates, onboarding_complete: true)
+```
+
+Google OAuth: session is returned on callback; run step 5 immediately in `navigateAfterAuth`.
+
+### Function contracts
+
+| Step | Endpoint | Auth | Body (JSON) |
+|------|----------|------|-------------|
+| Create profile | `POST restaurant-users/create-restaurant-user` | **Bearer** | `{ username, onboarding_complete?, palates?, about_me? }` |
+| Finish onboarding | `POST restaurant-users/update-restaurant-user` | **Bearer** | `{ username, palates, onboarding_complete: true }` |
+| Check username | `GET restaurant-users/check-username?username=` | None | — |
+
+`create-restaurant-user` returns **409** if a profile already exists for the JWT user. **404** from `update-restaurant-user` means the profile row is missing — call `create-restaurant-user` first.
+
+### Mobile implementation map
+
+| Concern | File |
+|---------|------|
+| Email sign-up + password validation | `tastyplates-mobile/components/auth/RegisterEmailForm.tsx` |
+| Profile ensure after session | `tastyplates-mobile/lib/authProfileSetup.ts` → `navigateAfterAuth` |
+| Verification + resend | `tastyplates-mobile/app/user-verification.tsx` |
+| Onboarding completion | `tastyplates-mobile/services/onboardingService.ts` |
+| Gate before tabs | `tastyplates-mobile/components/layout/OnboardingGate.tsx` |
+
+### Redirect URLs (mobile)
+
+Add to `[auth.redirections].allowedUrls` in `nhost.toml` (already deployed):
+
+- `tastyplates://user-verification`
+- `exp+tastyplates://user-verification`
+
+Used by `Linking.createURL('/user-verification')` in sign-up and resend flows.
+
+### Registration smoke test
+
+```bash
+AUTH="https://ygmkmxorcapgpimwerpc.auth.ap-southeast-1.nhost.run/v1"
+BASE="https://ygmkmxorcapgpimwerpc.functions.ap-southeast-1.nhost.run/v1"
+
+# 1. Sign up (returns session or needs verification depending on config)
+curl -sS -X POST "$AUTH/signup/email-password" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123","options":{"displayName":"Test"}}' | jq .
+
+# 2. With access token from step 1 (or after verify):
+curl -sS -X POST "$BASE/restaurant-users/create-restaurant-user" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"testuser","onboarding_complete":false}' | jq .
+```
+
+- [ ] Sign-up accepts password ≥ 9 characters
+- [ ] Verification email sends (Mailgun SMTP configured)
+- [ ] `create-restaurant-user` returns `{ ok: true, data: { user: … } }`
+- [ ] `update-restaurant-user` sets `onboarding_complete: true` after onboarding
+- [ ] Mobile reaches home feed after verify + onboarding
