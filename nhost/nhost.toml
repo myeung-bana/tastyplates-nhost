@@ -200,6 +200,15 @@ capacity = 1
 
 [provider]
 
+[provider.smtp]
+host = 'smtp.mailgun.org'
+port = 587
+user = 'postmaster@pgtw.banamedia.net'
+password = '{{ secrets.MAILGUN_SMTP_PASSWORD }}'
+sender = 'postmaster@pgtw.banamedia.net'
+secure = true
+method = 'LOGIN'
+
 [storage]
 version = '0.10.0'
 
