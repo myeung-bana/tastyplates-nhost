@@ -9,7 +9,7 @@ const GET_FEATURED_RESTAURANTS = `
       order_by: { sort_order: asc }
     ) {
       id restaurant_id sort_order
-      restaurant { id uuid title slug featured_image_url listing_street address average_rating ratings_count }
+      restaurant { id uuid title slug featured_image_url listing_street address average_rating ratings_count cuisines categories }
     }
   }
 `
