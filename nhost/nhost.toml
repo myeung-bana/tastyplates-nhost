@@ -209,9 +209,9 @@ capacity = 1
 [provider.smtp]
 host = 'smtp.mailgun.org'
 port = 587
-user = 'postmaster@pgtw.banamedia.net'
+user = 'support@tastyplates.co'
 password = '{{ secrets.MAILGUN_SMTP_PASSWORD }}'
-sender = 'postmaster@pgtw.banamedia.net'
+sender = 'support@tastyplates.co'
 # Port 587 uses STARTTLS (plain connect, then upgrade). secure=true is for implicit TLS (port 465).
 secure = false
 method = 'LOGIN'
