@@ -16,18 +16,30 @@ const GET_CHILD_RESTAURANT_LOCATION_IDS = `
   }
 `
 
+const ARTICLE_LOCATION_FILTER = `
+  _and: [
+    { status: { _eq: "published" } }
+    { deleted_at: { _is_null: true } }
+    {
+      article_restaurant_location_associations: {
+        location_id: { _in: $locationIds }
+      }
+    }
+  ]
+`
+
 const GET_ARTICLES_FOR_LOCATIONS = `
   query GetArticlesForLocations($locationIds: [Int!]!, $limit: Int!, $offset: Int!) {
     articles(
-      where: { location_id: { _in: $locationIds } deleted_at: { _is_null: true } status: { _eq: "published" } }
+      where: { ${ARTICLE_LOCATION_FILTER.trim()} }
       order_by: { published_at: desc }
       limit: $limit offset: $offset
     ) {
       id uuid slug title excerpt category featured_image_url featured_image_alt
-      reading_time_minutes published_at updated_at view_count location_id
+      reading_time_minutes published_at updated_at view_count
     }
     articles_aggregate(
-      where: { location_id: { _in: $locationIds } deleted_at: { _is_null: true } status: { _eq: "published" } }
+      where: { ${ARTICLE_LOCATION_FILTER.trim()} }
     ) { aggregate { count } }
   }
 `
@@ -35,15 +47,15 @@ const GET_ARTICLES_FOR_LOCATIONS = `
 const GET_ARTICLES_FOR_LOCATIONS_FALLBACK = `
   query GetArticlesForLocationsFallback($locationIds: [Int!]!, $limit: Int!, $offset: Int!) {
     articles(
-      where: { location_id: { _in: $locationIds } deleted_at: { _is_null: true } status: { _eq: "published" } }
+      where: { ${ARTICLE_LOCATION_FILTER.trim()} }
       order_by: { published_at: desc }
       limit: $limit offset: $offset
     ) {
       id uuid slug title excerpt category featured_image_url
-      reading_time_minutes published_at view_count location_id
+      reading_time_minutes published_at view_count
     }
     articles_aggregate(
-      where: { location_id: { _in: $locationIds } deleted_at: { _is_null: true } status: { _eq: "published" } }
+      where: { ${ARTICLE_LOCATION_FILTER.trim()} }
     ) { aggregate { count } }
   }
 `

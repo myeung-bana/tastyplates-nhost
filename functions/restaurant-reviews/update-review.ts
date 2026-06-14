@@ -2,19 +2,24 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 import { requireAuth, getUserId } from '../_lib/auth'
 import { hasuraQuery, hasuraMutation } from '../_lib/hasura'
+import {
+  normalizeReviewRating,
+  ReviewImageSchema,
+  ReviewRatingSchema,
+} from '../_lib/reviewSchemas'
 import { ok, fail } from '../_lib/respond'
 import { validate } from '../_lib/validate'
 
 const UpdateReviewSchema = z.object({
   id: z.string().uuid(),
-  title: z.string().optional(),
+  title: z.string().max(500).optional().nullable(),
   content: z.string().min(1).optional(),
-  rating: z.number().int().min(1).max(5).optional(),
+  rating: ReviewRatingSchema.optional(),
   status: z.enum(['approved', 'draft', 'pending']).optional(),
-  images: z.array(z.string()).optional(),
-  palates: z.unknown().optional(),
-  hashtags: z.array(z.string()).optional(),
-  recognitions: z.unknown().optional(),
+  images: z.array(ReviewImageSchema).optional().nullable(),
+  palates: z.unknown().optional().nullable(),
+  hashtags: z.array(z.string()).optional().nullable(),
+  recognitions: z.array(z.string()).optional().nullable(),
 })
 
 const GET_REVIEW_AUTHOR = `
@@ -53,7 +58,18 @@ export default async (req: Request, res: Response): Promise<void> => {
     if (!review) return fail(res, 'Review not found', 404)
     if (review.author_id !== userId) return fail(res, 'Forbidden', 403)
 
-    const { id, ...changes } = body
+    const { id, rating, hashtags, ...rest } = body
+    const changes = {
+      ...rest,
+      ...(rating != null ? { rating: normalizeReviewRating(rating) } : {}),
+      ...(hashtags != null
+        ? {
+            hashtags: hashtags
+              .map((tag) => tag.replace(/^#/, '').toLowerCase().trim())
+              .filter(Boolean),
+          }
+        : {}),
+    }
 
     type UpdateResult = { update_restaurant_reviews_by_pk: unknown }
     const data = await hasuraMutation<UpdateResult>(UPDATE_REVIEW, { id, changes })
