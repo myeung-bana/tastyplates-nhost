@@ -1,5 +1,5 @@
 import { hasuraQuery } from './hasura'
-import { getProfilesByIds, type UserProfileRow } from './user-profile'
+import type { UserProfileRow } from './user-profile'
 
 /** Matches mobile `TrendingReviewAuthor` / GraphQL `AuthorProfile` selection. */
 export type ReviewAuthorProfilePayload = {
@@ -37,6 +37,22 @@ export type EnrichReviewsOptions = {
   /** Include `featured_image_url` on restaurant briefs (carousel / cards). */
   includeRestaurantImage?: boolean
 }
+
+/** Minimal profile batch query — avoids heavy `PROFILE_FIELDS` / type mismatches on cloud Hasura. */
+const GET_PROFILES_FOR_REVIEW_AUTHORS = `
+  query GetProfilesForReviewAuthors($userIds: [String!]!) {
+    user_profiles(where: { user_id: { _in: $userIds } }) {
+      user_id
+      username
+      palates
+      user {
+        avatarUrl
+        email
+        displayName
+      }
+    }
+  }
+`
 
 const GET_RESTAURANTS_BY_UUIDS = `
   query GetRestaurantsByUuidsForReviewEnrichment($uuids: [uuid!]!) {
@@ -78,7 +94,11 @@ function emailLocalPart(email: string | null | undefined): string | null {
   return e.split('@')[0] ?? null
 }
 
-export function profileRowToAuthorProfile(row: UserProfileRow): ReviewAuthorProfilePayload {
+export function profileRowToAuthorProfile(
+  row: Pick<UserProfileRow, 'user_id' | 'username' | 'palates'> & {
+    user?: UserProfileRow['user'] | null
+  },
+): ReviewAuthorProfilePayload {
   return {
     user_id: row.user_id,
     username: row.username ?? null,
@@ -170,9 +190,17 @@ export async function buildAuthorProfileMap(
   const unique = [...new Set(authorIds.filter(isValidUuid))]
   if (unique.length === 0) return new Map()
 
-  const rows = await getProfilesByIds(unique)
+  const result = await hasuraQuery<{ user_profiles: UserProfileRow[] }>(
+    GET_PROFILES_FOR_REVIEW_AUTHORS,
+    { userIds: unique },
+  )
+  if (result.errors?.length) {
+    console.error('[review-enrichment] profile batch lookup failed', result.errors)
+    return new Map()
+  }
+
   const map = new Map<string, ReviewAuthorProfilePayload>()
-  for (const row of rows) {
+  for (const row of result.data?.user_profiles ?? []) {
     map.set(row.user_id, profileRowToAuthorProfile(row))
   }
   return map

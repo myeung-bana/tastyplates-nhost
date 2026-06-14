@@ -174,9 +174,15 @@ export default async (req: Request, res: Response): Promise<void> => {
     }
 
     const reviewsRaw = result.data?.restaurant_reviews ?? []
-    const total = result.data?.restaurant_reviews_aggregate.aggregate.count ?? 0
+    const total = result.data?.restaurant_reviews_aggregate?.aggregate?.count ?? 0
 
-    const reviews = await enrichReviewRows(reviewsRaw, { restaurants: true })
+    // Manage Reviews / profile lists need raw rows; author + restaurant enrichment is best-effort.
+    let reviews = reviewsRaw
+    try {
+      reviews = await enrichReviewRows(reviewsRaw, { restaurants: false })
+    } catch (error) {
+      console.error('[restaurant-reviews/get-user-reviews] enrichment failed, returning raw rows', error)
+    }
 
     ok(res, { reviews, meta: { total, limit, offset, hasMore: offset + reviews.length < total } })
   } catch (error) {
