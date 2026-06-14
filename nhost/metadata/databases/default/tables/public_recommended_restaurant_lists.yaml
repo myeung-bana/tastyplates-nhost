@@ -1,0 +1,87 @@
+table:
+  name: recommended_restaurant_lists
+  schema: public
+
+object_relationships:
+  - name: owner
+    using:
+      foreign_key_constraint_on: owner_id
+
+array_relationships:
+  # Name matches Hasura default (table name) — exposes recommended_restaurant_list_items_aggregate in GraphQL
+  - name: recommended_restaurant_list_items
+    using:
+      foreign_key_constraint_on:
+        column: list_id
+        table:
+          name: recommended_restaurant_list_items
+          schema: public
+
+select_permissions:
+  - role: public
+    permission:
+      filter:
+        _and:
+          - is_public: { _eq: true }
+          - is_active: { _eq: true }
+      columns:
+        - id
+        - uuid
+        - slug
+        - title
+        - description
+        - is_public
+        - is_active
+        - display_order
+        - display_pic
+        - owner_id
+        - created_at
+        - updated_at
+      allow_aggregations: false
+
+  - role: user
+    permission:
+      filter:
+        _or:
+          - owner_id: { _eq: X-Hasura-User-Id }
+          - _and:
+              - is_public: { _eq: true }
+              - is_active: { _eq: true }
+      columns:
+        - id
+        - uuid
+        - slug
+        - title
+        - description
+        - is_public
+        - is_active
+        - display_order
+        - display_pic
+        - owner_id
+        - share_token
+        - created_at
+        - updated_at
+      allow_aggregations: true
+
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+
+insert_permissions:
+  - role: admin
+    permission:
+      columns: "*"
+      check: {}
+
+update_permissions:
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+
+delete_permissions:
+  - role: admin
+    permission:
+      filter: {}

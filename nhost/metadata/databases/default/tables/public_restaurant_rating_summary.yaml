@@ -1,0 +1,61 @@
+table:
+  name: restaurant_rating_summary
+  schema: public
+
+select_permissions:
+  - role: public
+    permission:
+      columns:
+        - restaurant_id
+        - overall_review_count
+        - overall_rating_sum
+        - overall_rating_avg
+        - overall_rating_weighted
+        - authentic_review_count
+        - authentic_rating_sum
+        - authentic_rating_avg
+        - authentic_rating_weighted
+        - review_version
+        - updated_at
+      filter: {}
+      allow_aggregations: true
+
+  - role: user
+    permission:
+      columns:
+        - restaurant_id
+        - overall_review_count
+        - overall_rating_sum
+        - overall_rating_avg
+        - overall_rating_weighted
+        - authentic_review_count
+        - authentic_rating_sum
+        - authentic_rating_avg
+        - authentic_rating_weighted
+        - review_version
+        - updated_at
+      filter: {}
+      allow_aggregations: true
+
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+
+insert_permissions:
+  - role: admin
+    permission:
+      columns: "*"
+      check: {}
+
+update_permissions:
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+
+delete_permissions:
+  - role: admin
+    permission:
+      filter: {}

@@ -1,0 +1,84 @@
+table:
+  name: recommended_restaurant_list_items
+  schema: public
+
+# ── Object relationships ──────────────────────────────────────────────────────
+
+object_relationships:
+  # Parent list
+  - name: list
+    using:
+      foreign_key_constraint_on: list_id
+
+  # TP listing (restaurant_uuid — nullable for Google-only items)
+  - name: restaurant
+    using:
+      foreign_key_constraint_on: restaurant_uuid
+
+# ── Select permissions ────────────────────────────────────────────────────────
+
+select_permissions:
+  # Anonymous: items in public active lists only
+  - role: public
+    permission:
+      filter:
+        list:
+          _and:
+            - is_public: { _eq: true }
+            - is_active: { _eq: true }
+      columns:
+        - id
+        - list_id
+        - sort_order
+        - restaurant_id
+        - restaurant_uuid
+        - google_place_id
+        - city_location_id
+        - created_at
+      allow_aggregations: false
+
+  # Authenticated user: items in own lists OR public active lists
+  - role: user
+    permission:
+      filter:
+        list:
+          _or:
+            - owner_id: { _eq: X-Hasura-User-Id }
+            - _and:
+                - is_public: { _eq: true }
+                - is_active: { _eq: true }
+      columns:
+        - id
+        - list_id
+        - sort_order
+        - restaurant_id
+        - restaurant_uuid
+        - google_place_id
+        - city_location_id
+        - created_at
+      allow_aggregations: true
+
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+
+# ── Insert / update / delete managed by Nhost Functions via admin secret ──────
+
+insert_permissions:
+  - role: admin
+    permission:
+      columns: "*"
+      check: {}
+
+update_permissions:
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+
+delete_permissions:
+  - role: admin
+    permission:
+      filter: {}

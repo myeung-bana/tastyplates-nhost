@@ -49,7 +49,7 @@ const GET_RESTAURANTS_BY_UUIDS = `
   }
 `
 
-/** Inner fields for `restaurant_reviews.AuthorProfile` → `user_profiles` (Hasura metadata). */
+/** Inner fields when Hasura `AuthorProfile` → `user_profiles` is configured correctly. */
 export const REVIEW_AUTHOR_PROFILE_FIELDS = `
   user_id
   username
@@ -61,12 +61,12 @@ export const REVIEW_AUTHOR_PROFILE_FIELDS = `
   }
 `
 
-/** Nested author selection — matches cloud Hasura relationship name `AuthorProfile`. */
-export const REVIEW_AUTHOR_GRAPHQL_NESTED = `
-  AuthorProfile {
-    ${REVIEW_AUTHOR_PROFILE_FIELDS}
-  }
-`
+/**
+ * Nested author selection for review list queries.
+ * Intentionally empty: production Hasura may expose `AuthorProfile` on `users` (no `user_id`).
+ * Author data is hydrated in `enrichReviewRows` via batch `user_profiles` lookup instead.
+ */
+export const REVIEW_AUTHOR_GRAPHQL_NESTED = ''
 
 export function isValidUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_REGEX.test(value)
@@ -94,7 +94,12 @@ export function profileRowToAuthorProfile(row: UserProfileRow): ReviewAuthorProf
 function asAuthorProfile(value: unknown): ReviewAuthorProfilePayload | null {
   if (!value || typeof value !== 'object') return null
   const o = value as Record<string, unknown>
-  const user_id = typeof o.user_id === 'string' ? o.user_id : null
+  const user_id =
+    typeof o.user_id === 'string'
+      ? o.user_id
+      : typeof o.id === 'string'
+        ? o.id
+        : null
   if (!user_id) return null
 
   const nestedUser = o.user
