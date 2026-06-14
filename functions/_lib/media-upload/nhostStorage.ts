@@ -14,7 +14,7 @@ function buildMultipartBody(
       `Content-Disposition: form-data; name="bucket-id"${CRLF}${CRLF}` +
       `${bucketId}${CRLF}` +
       `--${boundary}${CRLF}` +
-      `Content-Disposition: form-data; name="file"; filename="${filename}"${CRLF}` +
+      `Content-Disposition: form-data; name="file[]"; filename="${filename}"${CRLF}` +
       `Content-Type: ${contentType}${CRLF}${CRLF}`,
     'utf-8',
   )
@@ -45,8 +45,11 @@ export async function uploadToNhostStorage(
     throw new Error(`Storage upload failed (${res.status}): ${text.slice(0, 200)}`)
   }
 
-  const json = (await res.json()) as { id?: string }
-  const fileId = json.id
+  const json = (await res.json()) as {
+    id?: string
+    processedFiles?: Array<{ id?: string }>
+  }
+  const fileId = json.processedFiles?.[0]?.id ?? json.id
   if (!fileId) throw new Error('Storage returned no file ID')
 
   return {
