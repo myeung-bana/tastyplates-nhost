@@ -212,7 +212,8 @@ port = 587
 user = 'postmaster@pgtw.banamedia.net'
 password = '{{ secrets.MAILGUN_SMTP_PASSWORD }}'
 sender = 'postmaster@pgtw.banamedia.net'
-secure = true
+# Port 587 uses STARTTLS (plain connect, then upgrade). secure=true is for implicit TLS (port 465).
+secure = false
 method = 'LOGIN'
 
 [storage]
