@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express'
 import { requireAuth, getUserId } from '../_lib/auth'
 import { hasuraQuery } from '../_lib/hasura'
-import { enrichReviewRows, REVIEW_AUTHOR_GRAPHQL_NESTED } from '../_lib/review-enrichment'
+import { REVIEW_AUTHOR_GRAPHQL_NESTED, safeEnrichReviewRows } from '../_lib/review-enrichment'
 import { ok, fail } from '../_lib/respond'
 
 const GET_USER_DRAFT_REVIEWS = `
@@ -47,7 +47,7 @@ export default async (req: Request, res: Response): Promise<void> => {
     const reviewsRaw = result.data?.restaurant_reviews ?? []
     const total = result.data?.restaurant_reviews_aggregate.aggregate.count ?? 0
 
-    const reviews = await enrichReviewRows(reviewsRaw, { restaurants: true })
+    const reviews = await safeEnrichReviewRows(reviewsRaw, { restaurants: true })
 
     ok(res, { reviews, meta: { total, limit, offset, hasMore: offset + reviews.length < total } })
   } catch (error) {

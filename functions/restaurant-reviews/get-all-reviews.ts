@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express'
 import { hasuraQuery } from '../_lib/hasura'
-import { enrichReviewRows, REVIEW_AUTHOR_GRAPHQL_NESTED } from '../_lib/review-enrichment'
+import { safeEnrichReviewRows, REVIEW_AUTHOR_GRAPHQL_NESTED } from '../_lib/review-enrichment'
 import { ok, fail } from '../_lib/respond'
 
 const GET_ALL_REVIEWS = `
@@ -84,7 +84,7 @@ export default async (req: Request, res: Response): Promise<void> => {
     >
     const total = result.data?.restaurant_reviews_aggregate.aggregate.count ?? 0
 
-    const reviews = await enrichReviewRows(reviewsRaw)
+    const reviews = await safeEnrichReviewRows(reviewsRaw)
 
     const lastItem = reviews[reviews.length - 1]
     const nextCursor = lastItem ? encodeReviewCursor(String(lastItem.created_at), String(lastItem.id)) : null

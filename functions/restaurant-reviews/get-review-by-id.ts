@@ -2,9 +2,9 @@ import type { Request, Response } from 'express'
 import { requireAuth, getUserId } from '../_lib/auth'
 import { hasuraQuery } from '../_lib/hasura'
 import {
-  enrichReviewRow,
   isValidUuid,
   REVIEW_AUTHOR_GRAPHQL_NESTED,
+  safeEnrichReviewRow,
 } from '../_lib/review-enrichment'
 import { ok, fail } from '../_lib/respond'
 
@@ -52,7 +52,7 @@ export default async (req: Request, res: Response): Promise<void> => {
       }
     }
 
-    const review = await enrichReviewRow(reviewRaw, { restaurants: true })
+    const review = await safeEnrichReviewRow(reviewRaw, { restaurants: true })
 
     ok(res, { review })
   } catch (error) {

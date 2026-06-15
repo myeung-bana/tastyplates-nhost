@@ -3,11 +3,12 @@ import { requireAuth, getUserId } from '../_lib/auth'
 import { hasuraQuery } from '../_lib/hasura'
 import {
   buildAuthorProfileMap,
-  enrichReviewRows,
   fetchRestaurantBriefMap,
   isValidUuid,
+  normalizeAuthorIdKey,
   normalizeReviewAuthorFields,
   REVIEW_AUTHOR_GRAPHQL_NESTED,
+  safeEnrichReviewRows,
   type ReviewAuthorProfilePayload,
   type ReviewRestaurantBrief,
 } from '../_lib/review-enrichment'
@@ -139,7 +140,7 @@ export default async (req: Request, res: Response): Promise<void> => {
     }
 
     const reviewsRaw = reviewsResult.data?.restaurant_reviews ?? []
-    const reviews = await enrichReviewRows(reviewsRaw, { restaurants: true })
+    const reviews = await safeEnrichReviewRows(reviewsRaw, { restaurants: true })
 
     const checkinsRaw = checkinsResult.data?.user_checkins ?? []
     const commentsRaw = commentsResult.data?.restaurant_reviews ?? []
@@ -180,7 +181,7 @@ export default async (req: Request, res: Response): Promise<void> => {
     }
 
     for (const checkin of checkinsRaw) {
-      const profile = authorMap.get(checkin.user_id) ?? null
+      const profile = authorMap.get(normalizeAuthorIdKey(checkin.user_id)) ?? null
       const restaurant = restaurantMap.get(checkin.restaurant_uuid) ?? null
       activities.push({
         type: 'checkin',
@@ -203,7 +204,7 @@ export default async (req: Request, res: Response): Promise<void> => {
       const authorId = String(comment.author_id ?? '')
       const restaurantUuid = comment.restaurant_uuid ? String(comment.restaurant_uuid) : null
       const fromGraphql = comment.AuthorProfile as ReviewAuthorProfilePayload | undefined
-      const profile = fromGraphql ?? authorMap.get(authorId) ?? null
+      const profile = fromGraphql ?? authorMap.get(normalizeAuthorIdKey(authorId)) ?? null
       const restaurant = restaurantUuid ? restaurantMap.get(restaurantUuid) ?? null : null
       activities.push({
         type: 'comment',

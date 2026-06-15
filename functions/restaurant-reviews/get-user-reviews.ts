@@ -2,9 +2,9 @@ import type { Request, Response } from 'express'
 import { resolveOptionalAuth } from '../_lib/auth-guard'
 import { hasuraQuery } from '../_lib/hasura'
 import {
-  enrichReviewRows,
   isValidUuid,
   REVIEW_AUTHOR_GRAPHQL_NESTED,
+  safeEnrichReviewRows,
 } from '../_lib/review-enrichment'
 import { ok, fail } from '../_lib/respond'
 
@@ -176,13 +176,7 @@ export default async (req: Request, res: Response): Promise<void> => {
     const reviewsRaw = result.data?.restaurant_reviews ?? []
     const total = result.data?.restaurant_reviews_aggregate?.aggregate?.count ?? 0
 
-    // Manage Reviews / profile lists need raw rows; author + restaurant enrichment is best-effort.
-    let reviews = reviewsRaw
-    try {
-      reviews = await enrichReviewRows(reviewsRaw, { restaurants: false })
-    } catch (error) {
-      console.error('[restaurant-reviews/get-user-reviews] enrichment failed, returning raw rows', error)
-    }
+    const reviews = await safeEnrichReviewRows(reviewsRaw, { restaurants: false })
 
     ok(res, { reviews, meta: { total, limit, offset, hasMore: offset + reviews.length < total } })
   } catch (error) {

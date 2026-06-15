@@ -28,6 +28,8 @@ export type ReviewRowWithAuthor = {
   restaurant_uuid?: string | null
   AuthorProfile?: ReviewAuthorProfilePayload | null
   author?: ReviewAuthorProfilePayload | null
+  /** Direct Hasura relationship `restaurant_reviews.user` → `auth.users` (optional). */
+  user?: unknown
   restaurant?: ReviewRestaurantBrief | null
 }
 
@@ -38,8 +40,8 @@ export type EnrichReviewsOptions = {
   includeRestaurantImage?: boolean
 }
 
-/** Minimal profile batch query — avoids heavy `PROFILE_FIELDS` / type mismatches on cloud Hasura. */
-const GET_PROFILES_FOR_REVIEW_AUTHORS = `
+/** Profile batch by `author_id` (= `user_profiles.user_id`). Avoids broken Hasura `AuthorProfile` joins. */
+const GET_PROFILES_FOR_REVIEW_AUTHORS_STRING = `
   query GetProfilesForReviewAuthors($userIds: [String!]!) {
     user_profiles(where: { user_id: { _in: $userIds } }) {
       user_id
@@ -50,6 +52,48 @@ const GET_PROFILES_FOR_REVIEW_AUTHORS = `
         email
         displayName
       }
+    }
+  }
+`
+
+const GET_PROFILES_FOR_REVIEW_AUTHORS_BPCHAR = `
+  query GetProfilesForReviewAuthorsBpchar($userIds: [bpchar!]!) {
+    user_profiles(where: { user_id: { _in: $userIds } }) {
+      user_id
+      username
+      palates
+      user {
+        avatarUrl
+        email
+        displayName
+      }
+    }
+  }
+`
+
+const GET_PROFILES_FOR_REVIEW_AUTHORS_UUID = `
+  query GetProfilesForReviewAuthorsUuid($userIds: [uuid!]!) {
+    user_profiles(where: { user_id: { _in: $userIds } }) {
+      user_id
+      username
+      palates
+      user {
+        avatarUrl
+        email
+        displayName
+      }
+    }
+  }
+`
+
+/** Fallback when no `user_profiles` row — uses direct `restaurant_reviews.user` → `auth.users` if present. */
+const GET_AUTH_USERS_FOR_REVIEW_AUTHORS = `
+  query GetAuthUsersForReviewAuthors($ids: [uuid!]!) {
+    users(where: { id: { _in: $ids } }) {
+      id
+      email
+      displayName
+      avatarUrl
     }
   }
 `
@@ -79,13 +123,18 @@ export const REVIEW_AUTHOR_PROFILE_FIELDS = `
 
 /**
  * Nested author selection for review list queries.
- * Intentionally empty: production Hasura may expose `AuthorProfile` on `users` (no `user_id`).
- * Author data is hydrated in `enrichReviewRows` via batch `user_profiles` lookup instead.
+ * Intentionally empty: cloud Hasura may map `AuthorProfile` to the wrong table/column.
+ * Author data is hydrated in `enrichReviewRows` via batch `user_profiles` (+ auth.users fallback).
  */
 export const REVIEW_AUTHOR_GRAPHQL_NESTED = ''
 
 export function isValidUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_REGEX.test(value)
+}
+
+/** Normalise `user_profiles.user_id` (bpchar) and UUID keys for map lookup. */
+export function normalizeAuthorIdKey(id: string): string {
+  return id.trim().toLowerCase()
 }
 
 function emailLocalPart(email: string | null | undefined): string | null {
@@ -100,7 +149,7 @@ export function profileRowToAuthorProfile(
   },
 ): ReviewAuthorProfilePayload {
   return {
-    user_id: row.user_id,
+    user_id: row.user_id.trim(),
     username: row.username ?? null,
     palates: row.palates ?? null,
     user: {
@@ -111,33 +160,44 @@ export function profileRowToAuthorProfile(
   }
 }
 
-function asAuthorProfile(value: unknown): ReviewAuthorProfilePayload | null {
+function asAuthUserFields(value: unknown): ReviewAuthorProfilePayload['user'] | null {
+  if (!value || typeof value !== 'object') return null
+  const u = value as Record<string, unknown>
+  return {
+    avatarUrl: typeof u.avatarUrl === 'string' ? u.avatarUrl : null,
+    email: typeof u.email === 'string' ? u.email : null,
+    displayName: typeof u.displayName === 'string' ? u.displayName : null,
+  }
+}
+
+/** Maps nested `user_profiles`, legacy `author`, or direct `restaurant_reviews.user` → `auth.users`. */
+function asAuthorProfile(value: unknown, authorIdHint?: string | null): ReviewAuthorProfilePayload | null {
   if (!value || typeof value !== 'object') return null
   const o = value as Record<string, unknown>
   const user_id =
     typeof o.user_id === 'string'
-      ? o.user_id
+      ? o.user_id.trim()
       : typeof o.id === 'string'
-        ? o.id
-        : null
+        ? o.id.trim()
+        : typeof authorIdHint === 'string'
+          ? authorIdHint.trim()
+          : null
   if (!user_id) return null
 
   const nestedUser = o.user
-  let user: ReviewAuthorProfilePayload['user'] = null
-  if (nestedUser && typeof nestedUser === 'object') {
-    const u = nestedUser as Record<string, unknown>
-    user = {
-      avatarUrl: typeof u.avatarUrl === 'string' ? u.avatarUrl : null,
-      email: typeof u.email === 'string' ? u.email : null,
-      displayName: typeof u.displayName === 'string' ? u.displayName : null,
-    }
-  }
+  const userFromNested = asAuthUserFields(nestedUser)
+  const userFromSelf =
+    typeof o.avatarUrl === 'string' ||
+    typeof o.email === 'string' ||
+    typeof o.displayName === 'string'
+      ? asAuthUserFields(o)
+      : null
 
   return {
     user_id,
     username: typeof o.username === 'string' ? o.username : null,
     palates: o.palates ?? null,
-    user,
+    user: userFromNested ?? userFromSelf,
   }
 }
 
@@ -176,12 +236,53 @@ function mergeAuthorProfiles(
  * any legacy `author` field is also merged in as a fallback.
  */
 export function normalizeReviewAuthorFields(review: Record<string, unknown>): void {
-  const fromAuthor = asAuthorProfile(review.author)
-  const fromProfile = asAuthorProfile(review.AuthorProfile)
-  const merged = mergeAuthorProfiles(fromProfile, fromAuthor)
+  const authorIdHint =
+    typeof review.author_id === 'string' ? review.author_id : null
+  const fromDirectUser = asAuthorProfile(review.user, authorIdHint)
+  const fromAuthor = asAuthorProfile(review.author, authorIdHint)
+  const fromProfile = asAuthorProfile(review.AuthorProfile, authorIdHint)
+  let merged = mergeAuthorProfiles(fromProfile, fromAuthor)
+  merged = mergeAuthorProfiles(merged, fromDirectUser)
   if (merged) {
     review.AuthorProfile = merged
   }
+}
+
+async function queryProfilesForAuthors(
+  userIds: string[],
+): Promise<UserProfileRow[]> {
+  if (userIds.length === 0) return []
+
+  type ProfileResult = { user_profiles: UserProfileRow[] }
+
+  let result = await hasuraQuery<ProfileResult>(GET_PROFILES_FOR_REVIEW_AUTHORS_STRING, {
+    userIds,
+  })
+  if (!result.errors?.length) {
+    return result.data?.user_profiles ?? []
+  }
+
+  const firstError = result.errors[0]?.message ?? ''
+  if (firstError.includes('bpchar')) {
+    result = await hasuraQuery<ProfileResult>(GET_PROFILES_FOR_REVIEW_AUTHORS_BPCHAR, {
+      userIds,
+    })
+    if (!result.errors?.length) {
+      return result.data?.user_profiles ?? []
+    }
+  }
+
+  if (firstError.includes('String') || firstError.includes('uuid')) {
+    result = await hasuraQuery<ProfileResult>(GET_PROFILES_FOR_REVIEW_AUTHORS_UUID, {
+      userIds,
+    })
+    if (!result.errors?.length) {
+      return result.data?.user_profiles ?? []
+    }
+  }
+
+  console.error('[review-enrichment] profile batch lookup failed', result.errors)
+  return []
 }
 
 export async function buildAuthorProfileMap(
@@ -190,18 +291,48 @@ export async function buildAuthorProfileMap(
   const unique = [...new Set(authorIds.filter(isValidUuid))]
   if (unique.length === 0) return new Map()
 
-  const result = await hasuraQuery<{ user_profiles: UserProfileRow[] }>(
-    GET_PROFILES_FOR_REVIEW_AUTHORS,
-    { userIds: unique },
-  )
+  const rows = await queryProfilesForAuthors(unique)
+  const map = new Map<string, ReviewAuthorProfilePayload>()
+  for (const row of rows) {
+    const profile = profileRowToAuthorProfile(row)
+    map.set(normalizeAuthorIdKey(profile.user_id), profile)
+  }
+  return map
+}
+
+async function buildAuthUserProfileMap(
+  authorIds: string[],
+): Promise<Map<string, ReviewAuthorProfilePayload>> {
+  const unique = [...new Set(authorIds.filter(isValidUuid))]
+  if (unique.length === 0) return new Map()
+
+  type AuthUserRow = {
+    id: string
+    email: string | null
+    displayName: string | null
+    avatarUrl: string | null
+  }
+
+  const result = await hasuraQuery<{ users: AuthUserRow[] }>(GET_AUTH_USERS_FOR_REVIEW_AUTHORS, {
+    ids: unique,
+  })
   if (result.errors?.length) {
-    console.error('[review-enrichment] profile batch lookup failed', result.errors)
+    console.error('[review-enrichment] auth.users batch lookup failed', result.errors)
     return new Map()
   }
 
   const map = new Map<string, ReviewAuthorProfilePayload>()
-  for (const row of result.data?.user_profiles ?? []) {
-    map.set(row.user_id, profileRowToAuthorProfile(row))
+  for (const row of result.data?.users ?? []) {
+    map.set(normalizeAuthorIdKey(row.id), {
+      user_id: row.id,
+      username: null,
+      palates: null,
+      user: {
+        avatarUrl: row.avatarUrl ?? null,
+        email: row.email ?? null,
+        displayName: row.displayName ?? null,
+      },
+    })
   }
   return map
 }
@@ -261,12 +392,26 @@ export async function enrichReviewRows<T extends ReviewRowWithAuthor & Record<st
 
   const profileMap = await buildAuthorProfileMap(authorIds)
 
+  const needsAuthFallback = authorIds.filter((id) => {
+    const batch = profileMap.get(normalizeAuthorIdKey(id))
+    return !batch || !isAuthorProfileUsable(batch)
+  })
+  const authMap =
+    needsAuthFallback.length > 0 ? await buildAuthUserProfileMap(needsAuthFallback) : new Map()
+
   for (const row of rows) {
     const authorId = row.author_id
-    const fromBatch = authorId && isValidUuid(authorId) ? profileMap.get(authorId) ?? null : null
+    const authorKey =
+      authorId && isValidUuid(authorId) ? normalizeAuthorIdKey(authorId) : null
+    const fromBatch = authorKey ? profileMap.get(authorKey) ?? null : null
+    const fromAuth = authorKey ? authMap.get(authorKey) ?? null : null
     const fromGraphql =
-      asAuthorProfile(row.AuthorProfile) ?? asAuthorProfile(row.author)
-    const merged = mergeAuthorProfiles(fromGraphql, fromBatch)
+      asAuthorProfile(row.AuthorProfile, authorId) ??
+      asAuthorProfile(row.author, authorId) ??
+      asAuthorProfile(row.user, authorId)
+
+    let merged = mergeAuthorProfiles(fromGraphql, fromBatch)
+    merged = mergeAuthorProfiles(merged, fromAuth)
 
     if (merged) {
       row.AuthorProfile = merged
@@ -274,6 +419,8 @@ export async function enrichReviewRows<T extends ReviewRowWithAuthor & Record<st
       row.AuthorProfile = fromGraphql
     } else if (fromBatch) {
       row.AuthorProfile = fromBatch
+    } else if (fromAuth) {
+      row.AuthorProfile = fromAuth
     }
   }
 
@@ -310,5 +457,38 @@ export async function enrichReviewRow<T extends ReviewRowWithAuthor>(
 ): Promise<T | null> {
   if (!review) return null
   const [enriched] = await enrichReviewRows([review], options)
+  return enriched ?? null
+}
+
+/**
+ * Best-effort enrichment — never throws; returns raw rows if batch lookups fail.
+ * Use in all review HTTP handlers so Manage Reviews / feeds do not 500.
+ */
+export async function safeEnrichReviewRows<T extends ReviewRowWithAuthor & Record<string, unknown>>(
+  reviews: T[],
+  options: EnrichReviewsOptions = {},
+): Promise<T[]> {
+  try {
+    return await enrichReviewRows(reviews, options)
+  } catch (error) {
+    console.error('[review-enrichment] safeEnrichReviewRows failed, returning partial rows', error)
+    return reviews.map((row) => {
+      const copy = { ...row } as T & Record<string, unknown>
+      try {
+        normalizeReviewAuthorFields(copy)
+      } catch {
+        /* ignore */
+      }
+      return copy as T
+    })
+  }
+}
+
+export async function safeEnrichReviewRow<T extends ReviewRowWithAuthor>(
+  review: T | null,
+  options: EnrichReviewsOptions = {},
+): Promise<T | null> {
+  if (!review) return null
+  const [enriched] = await safeEnrichReviewRows([review], options)
   return enriched ?? null
 }
