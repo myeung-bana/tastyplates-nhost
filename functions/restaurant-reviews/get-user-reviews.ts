@@ -18,6 +18,24 @@ const REVIEW_ROW_FIELDS_EXTENDED = `
   created_at updated_at published_at author_id restaurant_uuid
 `
 
+/** Manage Reviews listing — omits heavy JSON (`images`, `palates`, `hashtags`). */
+const REVIEW_ROW_SUMMARY = `
+  id title content rating status
+  created_at updated_at published_at author_id restaurant_uuid
+  likes_count replies_count
+`
+
+const REVIEW_ROW_SUMMARY_FALLBACK = `
+  id title content rating status
+  created_at published_at author_id restaurant_uuid
+  likes_count replies_count
+`
+
+function pickReviewFields(summary: boolean, extended: boolean): string {
+  if (summary) return extended ? REVIEW_ROW_SUMMARY : REVIEW_ROW_SUMMARY_FALLBACK
+  return extended ? REVIEW_ROW_FIELDS_EXTENDED : REVIEW_ROW_FIELDS
+}
+
 function buildAllUserReviewsQuery(fields: string, nestedAuthor: string): string {
   return `
   query GetUserReviews($authorId: uuid!, $limit: Int, $offset: Int) {
@@ -82,23 +100,21 @@ function buildUserReviewsByStatusQuery(fields: string, nestedAuthor: string): st
 `
 }
 
-const GET_ALL_USER_REVIEWS = buildAllUserReviewsQuery(
-  REVIEW_ROW_FIELDS_EXTENDED,
-  REVIEW_AUTHOR_GRAPHQL_NESTED,
-)
-const GET_ALL_USER_REVIEWS_FALLBACK = buildAllUserReviewsQuery(REVIEW_ROW_FIELDS, '')
+function buildQuerySet(summary: boolean) {
+  const primary = pickReviewFields(summary, true)
+  const fallback = pickReviewFields(summary, false)
+  return {
+    all: buildAllUserReviewsQuery(primary, REVIEW_AUTHOR_GRAPHQL_NESTED),
+    allFallback: buildAllUserReviewsQuery(fallback, ''),
+    public: buildPublicUserReviewsQuery(primary, REVIEW_AUTHOR_GRAPHQL_NESTED),
+    publicFallback: buildPublicUserReviewsQuery(fallback, ''),
+    byStatus: buildUserReviewsByStatusQuery(primary, REVIEW_AUTHOR_GRAPHQL_NESTED),
+    byStatusFallback: buildUserReviewsByStatusQuery(fallback, ''),
+  }
+}
 
-const GET_PUBLIC_USER_REVIEWS = buildPublicUserReviewsQuery(
-  REVIEW_ROW_FIELDS_EXTENDED,
-  REVIEW_AUTHOR_GRAPHQL_NESTED,
-)
-const GET_PUBLIC_USER_REVIEWS_FALLBACK = buildPublicUserReviewsQuery(REVIEW_ROW_FIELDS, '')
-
-const GET_USER_REVIEWS_BY_STATUS = buildUserReviewsByStatusQuery(
-  REVIEW_ROW_FIELDS_EXTENDED,
-  REVIEW_AUTHOR_GRAPHQL_NESTED,
-)
-const GET_USER_REVIEWS_BY_STATUS_FALLBACK = buildUserReviewsByStatusQuery(REVIEW_ROW_FIELDS, '')
+const FULL_QUERIES = buildQuerySet(false)
+const SUMMARY_QUERIES = buildQuerySet(true)
 
 const PRIVATE_REVIEW_STATUSES = new Set(['draft', 'pending'])
 const PUBLIC_REVIEW_STATUSES = new Set(['approved'])
@@ -131,6 +147,9 @@ export default async (req: Request, res: Response): Promise<void> => {
     const status = url.searchParams.get('status')?.toLowerCase() ?? undefined
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20'), 100)
     const offset = parseInt(url.searchParams.get('offset') ?? '0') || 0
+    const summaryParam = url.searchParams.get('summary')
+    const summary = summaryParam === '1' || summaryParam === 'true'
+    const queries = summary ? SUMMARY_QUERIES : FULL_QUERIES
 
     if (!authorId) return fail(res, 'Missing required param: author_id', 400)
     if (!isValidUuid(authorId)) return fail(res, 'Invalid UUID format', 400)
@@ -156,15 +175,15 @@ export default async (req: Request, res: Response): Promise<void> => {
 
     const result = status
       ? await queryWithFallback(
-          GET_USER_REVIEWS_BY_STATUS,
-          GET_USER_REVIEWS_BY_STATUS_FALLBACK,
+          queries.byStatus,
+          queries.byStatusFallback,
           variables,
         )
       : canReadPrivate
-        ? await queryWithFallback(GET_ALL_USER_REVIEWS, GET_ALL_USER_REVIEWS_FALLBACK, variables)
+        ? await queryWithFallback(queries.all, queries.allFallback, variables)
         : await queryWithFallback(
-            GET_PUBLIC_USER_REVIEWS,
-            GET_PUBLIC_USER_REVIEWS_FALLBACK,
+            queries.public,
+            queries.publicFallback,
             variables,
           )
 

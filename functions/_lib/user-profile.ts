@@ -144,6 +144,7 @@ export function toFollowListUser(row: UserProfileRow): {
   display_name: string | null
   profile_image: string | null
   about_me: string | null
+  palates: unknown
 } {
   return {
     id: row.user.id,
@@ -151,6 +152,7 @@ export function toFollowListUser(row: UserProfileRow): {
     display_name: row.user.displayName ?? row.username,
     profile_image: row.user.avatarUrl,
     about_me: row.about_me,
+    palates: row.palates,
   }
 }
 
