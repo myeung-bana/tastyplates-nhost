@@ -220,7 +220,7 @@ function mergeAuthorProfiles(
 
   return {
     user_id: fromGraphql.user_id || fromBatch.user_id,
-    username: fromGraphql.username?.trim() || fromBatch.username?.trim() || null,
+    username: fromBatch.username?.trim() || fromGraphql.username?.trim() || null,
     palates: fromGraphql.palates ?? fromBatch.palates ?? null,
     user: {
       avatarUrl: fromGraphql.user?.avatarUrl?.trim() || fromBatch.user?.avatarUrl?.trim() || null,

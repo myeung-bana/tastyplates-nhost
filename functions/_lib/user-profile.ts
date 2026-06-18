@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto'
+
 import { hasuraAdmin, hasuraMutation } from './hasura'
 
 const PROFILE_FIELDS = `
@@ -265,6 +267,49 @@ export async function isUsernameTaken(username: string): Promise<boolean> {
     { username },
   )
   return (data.user_profiles?.length ?? 0) > 0
+}
+
+/** `user_` + 10 hex chars — fits mobile username max length (20). */
+export function generatePlaceholderUsername(): string {
+  return `user_${randomBytes(5).toString('hex')}`
+}
+
+export async function generateUniquePlaceholderUsername(): Promise<string> {
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const username = generatePlaceholderUsername()
+    if (!(await isUsernameTaken(username))) return username
+  }
+  return `user_${Date.now().toString(36).slice(-10)}`
+}
+
+export type EnsureUserProfileResult = {
+  profile: UserProfileRow
+  created: boolean
+}
+
+/**
+ * Idempotent: returns existing `user_profiles` row or creates one with `user_<random>`.
+ * `user_id` must be the Nhost auth UUID (`auth.users.id`).
+ */
+export async function ensureUserProfile(userId: string): Promise<EnsureUserProfileResult> {
+  const existing = await getProfileById(userId)
+  if (existing) {
+    return { profile: existing, created: false }
+  }
+
+  const username = await generateUniquePlaceholderUsername()
+  await createUserProfile({
+    user_id: userId,
+    username,
+    onboarding_complete: false,
+  })
+
+  const profile = await getProfileById(userId)
+  if (!profile) {
+    throw new Error('ensureUserProfile: insert succeeded but profile could not be loaded')
+  }
+
+  return { profile, created: true }
 }
 
 export async function createUserProfile(object: {
