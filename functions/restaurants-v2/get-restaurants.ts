@@ -74,7 +74,13 @@ export default async (req: Request, res: Response): Promise<void> => {
       })
     }
     if (cuisine_ids?.length) conditions.push({ cuisines: { _contains: cuisine_ids.map(id => ({ id })) } })
-    if (cuisine_slugs?.length) conditions.push({ cuisines: { _contains: cuisine_slugs.map(slug => ({ slug })) } })
+    if (cuisine_slugs?.length === 1) {
+      conditions.push({ cuisines: { _contains: [{ slug: cuisine_slugs[0] }] } })
+    } else if (cuisine_slugs && cuisine_slugs.length > 1) {
+      conditions.push({
+        _or: cuisine_slugs.map((slug) => ({ cuisines: { _contains: [{ slug }] } })),
+      })
+    }
     if (palate_ids?.length) conditions.push({ palates: { _contains: palate_ids.map(id => ({ id })) } })
     if (palate_slugs?.length) conditions.push({ palates: { _contains: palate_slugs.map(slug => ({ slug })) } })
     if (category_ids?.length) conditions.push({ categories: { _contains: category_ids.map(id => ({ id })) } })
