@@ -1,161 +1,24 @@
 import type { Request, Response } from 'express'
 import { resolveOptionalAuth } from '../_lib/auth-guard'
-import { hasuraQuery } from '../_lib/hasura'
+import { isValidUuid } from '../_lib/review-enrichment'
 import {
-  isValidUuid,
-  REVIEW_AUTHOR_GRAPHQL_NESTED,
-  safeEnrichReviewRows,
-} from '../_lib/review-enrichment'
+  listUserReviews,
+  PRIVATE_REVIEW_STATUSES,
+} from '../_lib/list-user-reviews'
 import { ok, fail } from '../_lib/respond'
-
-const REVIEW_ROW_FIELDS = `
-  id title content rating images palates hashtags likes_count replies_count status
-  created_at published_at author_id restaurant_uuid
-`
-
-const REVIEW_ROW_FIELDS_EXTENDED = `
-  id title content rating images palates hashtags likes_count replies_count status
-  created_at updated_at published_at author_id restaurant_uuid
-`
-
-/** Manage Reviews listing — omits heavy JSON (`images`, `palates`, `hashtags`). */
-const REVIEW_ROW_SUMMARY = `
-  id title content rating status
-  created_at updated_at published_at author_id restaurant_uuid
-  likes_count replies_count
-`
-
-const REVIEW_ROW_SUMMARY_FALLBACK = `
-  id title content rating status
-  created_at published_at author_id restaurant_uuid
-  likes_count replies_count
-`
-
-function pickReviewFields(summary: boolean, extended: boolean): string {
-  if (summary) return extended ? REVIEW_ROW_SUMMARY : REVIEW_ROW_SUMMARY_FALLBACK
-  return extended ? REVIEW_ROW_FIELDS_EXTENDED : REVIEW_ROW_FIELDS
-}
-
-function buildAllUserReviewsQuery(fields: string, nestedAuthor: string): string {
-  return `
-  query GetUserReviews($authorId: uuid!, $limit: Int, $offset: Int) {
-    restaurant_reviews(
-      where: { author_id: { _eq: $authorId } deleted_at: { _is_null: true } parent_review_id: { _is_null: true } }
-      order_by: [{ created_at: desc }, { id: desc }]
-      limit: $limit offset: $offset
-    ) {
-      ${fields}
-      ${nestedAuthor}
-    }
-    restaurant_reviews_aggregate(
-      where: { author_id: { _eq: $authorId } deleted_at: { _is_null: true } parent_review_id: { _is_null: true } }
-    ) { aggregate { count } }
-  }
-`
-}
-
-function buildPublicUserReviewsQuery(fields: string, nestedAuthor: string): string {
-  return `
-  query GetPublicUserReviews($authorId: uuid!, $limit: Int, $offset: Int) {
-    restaurant_reviews(
-      where: {
-        author_id: { _eq: $authorId }
-        deleted_at: { _is_null: true }
-        parent_review_id: { _is_null: true }
-        status: { _eq: "approved" }
-      }
-      order_by: [{ created_at: desc }, { id: desc }]
-      limit: $limit offset: $offset
-    ) {
-      ${fields}
-      ${nestedAuthor}
-    }
-    restaurant_reviews_aggregate(
-      where: {
-        author_id: { _eq: $authorId }
-        deleted_at: { _is_null: true }
-        parent_review_id: { _is_null: true }
-        status: { _eq: "approved" }
-      }
-    ) { aggregate { count } }
-  }
-`
-}
-
-function buildUserReviewsByStatusQuery(fields: string, nestedAuthor: string): string {
-  return `
-  query GetUserReviewsByStatus($authorId: uuid!, $status: String!, $limit: Int, $offset: Int) {
-    restaurant_reviews(
-      where: { author_id: { _eq: $authorId } deleted_at: { _is_null: true } parent_review_id: { _is_null: true } status: { _eq: $status } }
-      order_by: [{ created_at: desc }, { id: desc }]
-      limit: $limit offset: $offset
-    ) {
-      ${fields}
-      ${nestedAuthor}
-    }
-    restaurant_reviews_aggregate(
-      where: { author_id: { _eq: $authorId } deleted_at: { _is_null: true } parent_review_id: { _is_null: true } status: { _eq: $status } }
-    ) { aggregate { count } }
-  }
-`
-}
-
-function buildQuerySet(summary: boolean) {
-  const primary = pickReviewFields(summary, true)
-  const fallback = pickReviewFields(summary, false)
-  return {
-    all: buildAllUserReviewsQuery(primary, REVIEW_AUTHOR_GRAPHQL_NESTED),
-    allFallback: buildAllUserReviewsQuery(fallback, ''),
-    public: buildPublicUserReviewsQuery(primary, REVIEW_AUTHOR_GRAPHQL_NESTED),
-    publicFallback: buildPublicUserReviewsQuery(fallback, ''),
-    byStatus: buildUserReviewsByStatusQuery(primary, REVIEW_AUTHOR_GRAPHQL_NESTED),
-    byStatusFallback: buildUserReviewsByStatusQuery(fallback, ''),
-  }
-}
-
-const FULL_QUERIES = buildQuerySet(false)
-const SUMMARY_QUERIES = buildQuerySet(true)
-
-const PRIVATE_REVIEW_STATUSES = new Set(['draft', 'pending'])
-const PUBLIC_REVIEW_STATUSES = new Set(['approved'])
-
-type ReviewsQueryResult = {
-  restaurant_reviews: Array<Record<string, unknown>>
-  restaurant_reviews_aggregate: { aggregate: { count: number } }
-}
-
-async function queryWithFallback(
-  primaryQuery: string,
-  fallbackQuery: string,
-  variables: Record<string, unknown>,
-): Promise<Awaited<ReturnType<typeof hasuraQuery<ReviewsQueryResult>>>> {
-  let result = await hasuraQuery<ReviewsQueryResult>(primaryQuery, variables)
-  if (result.errors?.length) {
-    console.warn(
-      '[restaurant-reviews/get-user-reviews] primary query failed, trying fallback:',
-      result.errors[0]?.message,
-    )
-    result = await hasuraQuery<ReviewsQueryResult>(fallbackQuery, variables)
-  }
-  return result
-}
 
 export default async (req: Request, res: Response): Promise<void> => {
   try {
     const url = new URL(req.url, 'http://localhost')
     const authorId = url.searchParams.get('author_id')
     const status = url.searchParams.get('status')?.toLowerCase() ?? undefined
-    const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20'), 100)
-    const offset = parseInt(url.searchParams.get('offset') ?? '0') || 0
+    const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20', 10), 100)
+    const offset = parseInt(url.searchParams.get('offset') ?? '0', 10) || 0
     const summaryParam = url.searchParams.get('summary')
     const summary = summaryParam === '1' || summaryParam === 'true'
-    const queries = summary ? SUMMARY_QUERIES : FULL_QUERIES
 
     if (!authorId) return fail(res, 'Missing required param: author_id', 400)
     if (!isValidUuid(authorId)) return fail(res, 'Invalid UUID format', 400)
-    if (status && !PRIVATE_REVIEW_STATUSES.has(status) && !PUBLIC_REVIEW_STATUSES.has(status)) {
-      return fail(res, 'Invalid status', 400)
-    }
 
     const auth = await resolveOptionalAuth(req, res)
     const authUserId = auth?.userId ?? null
@@ -169,37 +32,24 @@ export default async (req: Request, res: Response): Promise<void> => {
       return fail(res, 'Forbidden', 403)
     }
 
-    const variables = status
-      ? { authorId, status, limit, offset }
-      : { authorId, limit, offset }
+    const result = await listUserReviews({
+      authorId,
+      status,
+      limit,
+      offset,
+      summary,
+      canReadPrivate,
+      enrichRestaurants: false,
+      logTag: '[restaurant-reviews/get-user-reviews]',
+    })
 
-    const result = status
-      ? await queryWithFallback(
-          queries.byStatus,
-          queries.byStatusFallback,
-          variables,
-        )
-      : canReadPrivate
-        ? await queryWithFallback(queries.all, queries.allFallback, variables)
-        : await queryWithFallback(
-            queries.public,
-            queries.publicFallback,
-            variables,
-          )
-
-    if (result.errors?.length) {
-      console.error('[restaurant-reviews/get-user-reviews]', result.errors)
-      return fail(res, 'Failed to fetch user reviews', 500)
+    if (!result.ok) {
+      return fail(res, result.error, result.error === 'Invalid status' ? 400 : 500)
     }
 
-    const reviewsRaw = result.data?.restaurant_reviews ?? []
-    const total = result.data?.restaurant_reviews_aggregate?.aggregate?.count ?? 0
-
-    const reviews = await safeEnrichReviewRows(reviewsRaw, { restaurants: false })
-
-    ok(res, { reviews, meta: { total, limit, offset, hasMore: offset + reviews.length < total } })
+    ok(res, result.data)
   } catch (error) {
     console.error('[restaurant-reviews/get-user-reviews]', error)
-    res.status(500).json({ ok: false, error: 'Internal server error' })
+    fail(res, 'Internal server error', 500)
   }
 }
