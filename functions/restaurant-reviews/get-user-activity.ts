@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express'
 import { hasuraQuery } from '../_lib/hasura'
 import { resolveOptionalAuth } from '../_lib/auth-guard'
+import { listUserReviews } from '../_lib/list-user-reviews'
 import {
   buildAuthorProfileMap,
   fetchRestaurantBriefMap,
@@ -8,29 +9,9 @@ import {
   normalizeAuthorIdKey,
   normalizeReviewAuthorFields,
   REVIEW_AUTHOR_GRAPHQL_NESTED,
-  safeEnrichReviewRows,
   type ReviewAuthorProfilePayload,
 } from '../_lib/review-enrichment'
 import { ok, fail } from '../_lib/respond'
-
-const GET_USER_REVIEWS = `
-  query GetUserActivityReviews($authorId: uuid!, $limit: Int) {
-    restaurant_reviews(
-      where: {
-        author_id: { _eq: $authorId }
-        deleted_at: { _is_null: true }
-        parent_review_id: { _is_null: true }
-        status: { _eq: "approved" }
-      }
-      order_by: [{ created_at: desc }, { id: desc }]
-      limit: $limit
-    ) {
-      id title content rating images palates hashtags mentions recognitions
-      likes_count replies_count status created_at published_at author_id restaurant_uuid
-      ${REVIEW_AUTHOR_GRAPHQL_NESTED}
-    }
-  }
-`
 
 const GET_USER_CHECKINS = `
   query GetUserActivityCheckins($userId: uuid!, $limit: Int) {
@@ -76,11 +57,9 @@ function activitySortTime(iso: string): number {
   return Number.isFinite(t) ? t : 0
 }
 
-/** Mixed public activity for a profile owner (reviews, check-ins, comments). */
+/** Mixed profile activity (reviews via shared `listUserReviews`, plus check-ins and comments). */
 export default async (req: Request, res: Response): Promise<void> => {
   try {
-    await resolveOptionalAuth(req, res)
-
     const url = new URL(req.url, 'http://localhost')
     const userId = url.searchParams.get('user_id')?.trim() ?? ''
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '3', 10), 20)
@@ -89,9 +68,12 @@ export default async (req: Request, res: Response): Promise<void> => {
     if (!userId) return fail(res, 'Missing required param: user_id', 400)
     if (!isValidUuid(userId)) return fail(res, 'Invalid UUID format', 400)
 
+    const auth = await resolveOptionalAuth(req, res)
+    const authUserId = auth?.userId ?? null
+    const canReadPrivate = authUserId === userId
+
     const fetchLimit = Math.min(30, offset + limit + limit)
 
-    type ReviewsResult = { restaurant_reviews: Array<Record<string, unknown>> }
     type CheckinsResult = {
       user_checkins: Array<{
         id: string
@@ -102,23 +84,33 @@ export default async (req: Request, res: Response): Promise<void> => {
     }
     type CommentsResult = { restaurant_reviews: Array<Record<string, unknown>> }
 
-    const [reviewsResult, checkinsResult, commentsResult] = await Promise.all([
-      hasuraQuery<ReviewsResult>(GET_USER_REVIEWS, { authorId: userId, limit: fetchLimit }),
+    const [reviewsList, checkinsResult, commentsResult] = await Promise.all([
+      listUserReviews({
+        authorId: userId,
+        limit: fetchLimit,
+        offset: 0,
+        summary: false,
+        canReadPrivate,
+        enrichRestaurants: true,
+        logTag: '[restaurant-reviews/get-user-activity]',
+      }),
       hasuraQuery<CheckinsResult>(GET_USER_CHECKINS, { userId, limit: fetchLimit }),
       hasuraQuery<CommentsResult>(GET_USER_COMMENTS, { authorId: userId, limit: fetchLimit }),
     ])
 
-    if (reviewsResult.errors?.length || checkinsResult.errors?.length || commentsResult.errors?.length) {
+    if (!reviewsList.ok) {
+      return fail(res, reviewsList.error, 500)
+    }
+
+    if (checkinsResult.errors?.length || commentsResult.errors?.length) {
       console.error('[restaurant-reviews/get-user-activity]', {
-        reviews: reviewsResult.errors,
         checkins: checkinsResult.errors,
         comments: commentsResult.errors,
       })
       return fail(res, 'Failed to fetch activity', 500)
     }
 
-    const reviewsRaw = reviewsResult.data?.restaurant_reviews ?? []
-    const reviews = await safeEnrichReviewRows(reviewsRaw, { restaurants: true })
+    const reviews = reviewsList.data.reviews
     const checkinsRaw = checkinsResult.data?.user_checkins ?? []
     const commentsRaw = commentsResult.data?.restaurant_reviews ?? []
 
@@ -154,7 +146,7 @@ export default async (req: Request, res: Response): Promise<void> => {
         created_at: String(review.created_at),
         author_id: String(review.author_id),
         restaurant_uuid: review.restaurant_uuid ? String(review.restaurant_uuid) : null,
-        payload: review as Record<string, unknown>,
+        payload: review,
       })
     }
 
