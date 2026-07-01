@@ -39,7 +39,7 @@ export default async (req: Request, res: Response): Promise<void> => {
       offset,
       summary,
       canReadPrivate,
-      enrichRestaurants: false,
+      enrichRestaurants: true,
       logTag: '[restaurant-reviews/get-user-reviews]',
     })
 

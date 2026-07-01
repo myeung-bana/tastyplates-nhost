@@ -7,7 +7,8 @@ import {
   ReviewImageSchema,
   ReviewRatingSchema,
 } from '../_lib/reviewSchemas'
-import { ok, fail } from '../_lib/respond'
+import { backfillRestaurantFeaturedFromReview } from '../_lib/restaurantFeaturedImage'
+import { ok } from '../_lib/respond'
 import { validate } from '../_lib/validate'
 
 const CreateReviewSchema = z.object({
@@ -46,6 +47,8 @@ export default async (req: Request, res: Response): Promise<void> => {
 
     // TODO: Rating rebuild should be triggered asynchronously via a Hasura event trigger
     type Result = { insert_restaurant_reviews_one: unknown }
+    const reviewImages = body.images?.length ? body.images : null
+
     const data = await hasuraMutation<Result>(CREATE_REVIEW, {
       object: {
         restaurant_uuid: body.restaurant_uuid,
@@ -53,13 +56,15 @@ export default async (req: Request, res: Response): Promise<void> => {
         title: body.title?.trim() || null,
         content: body.content,
         rating: normalizeReviewRating(body.rating),
-        images: body.images?.length ? body.images : null,
+        images: reviewImages,
         palates: body.palates ?? null,
         hashtags: normalizedHashtags.length > 0 ? normalizedHashtags : null,
         recognitions: body.recognitions?.length ? body.recognitions : null,
         status: body.status,
       },
     })
+
+    await backfillRestaurantFeaturedFromReview(body.restaurant_uuid, reviewImages)
 
     ok(res, { review: data.insert_restaurant_reviews_one }, 201)
   } catch (error) {

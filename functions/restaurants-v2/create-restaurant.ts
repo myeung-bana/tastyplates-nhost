@@ -1,8 +1,10 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
-import { requireAuth } from '../_lib/auth'
+import { requireAuth, getUserId } from '../_lib/auth'
+import { upsertGooglePlaceCacheSafe } from '../_lib/googlePlaceCache'
+import { ingestGooglePlacePhoto } from '../_lib/ingestGooglePlacePhoto'
 import { hasuraMutation } from '../_lib/hasura'
-import { ok, fail } from '../_lib/respond'
+import { ok } from '../_lib/respond'
 import { validate } from '../_lib/validate'
 
 const CreateRestaurantSchema = z.object({
@@ -15,6 +17,8 @@ const CreateRestaurantSchema = z.object({
   phone: z.string().optional(),
   menu_url: z.string().optional(),
   featured_image_url: z.string().optional(),
+  google_place_id: z.string().min(1).max(500).optional(),
+  google_photo_reference: z.string().min(1).max(500).optional(),
   cuisines: z.unknown().optional(),
   palates: z.unknown().optional(),
   categories: z.unknown().optional(),
@@ -25,10 +29,23 @@ const CreateRestaurantSchema = z.object({
 const CREATE_RESTAURANT = `
   mutation CreateRestaurant($object: restaurants_insert_input!) {
     insert_restaurants_one(object: $object) {
-      id uuid title slug status listing_street phone longitude latitude featured_image_url address created_at
+      id uuid title slug status listing_street phone longitude latitude featured_image_url google_place_id address created_at
     }
   }
 `
+
+function resolveGooglePlaceId(
+  explicit: string | undefined,
+  address: unknown,
+): string | null {
+  const fromBody = explicit?.trim()
+  if (fromBody) return fromBody
+  if (address && typeof address === 'object' && address !== null) {
+    const placeId = (address as { place_id?: string }).place_id?.trim()
+    if (placeId) return placeId
+  }
+  return null
+}
 
 export default async (req: Request, res: Response): Promise<void> => {
   try {
@@ -38,10 +55,45 @@ export default async (req: Request, res: Response): Promise<void> => {
     const body = validate(req, res, CreateRestaurantSchema)
     if (!body) return
 
-    type Result = { insert_restaurants_one: unknown }
-    const data = await hasuraMutation<Result>(CREATE_RESTAURANT, { object: body })
+    const userId = getUserId(payload)
+    const {
+      google_place_id: googlePlaceIdInput,
+      google_photo_reference: googlePhotoReference,
+      featured_image_url: featuredImageInput,
+      ...restaurantFields
+    } = body
 
-    ok(res, { restaurant: data.insert_restaurants_one }, 201)
+    const googlePlaceId = resolveGooglePlaceId(googlePlaceIdInput, body.address)
+
+    let featuredImageUrl = featuredImageInput?.trim() || null
+    if (!featuredImageUrl && googlePhotoReference?.trim()) {
+      featuredImageUrl = await ingestGooglePlacePhoto(googlePhotoReference.trim(), userId, {
+        filenameHint: `restaurant-${body.slug}`,
+      })
+    }
+
+    const object: Record<string, unknown> = { ...restaurantFields }
+    if (googlePlaceId) object.google_place_id = googlePlaceId
+    if (featuredImageUrl) object.featured_image_url = featuredImageUrl
+
+    type Result = { insert_restaurants_one: Record<string, unknown> | null }
+    const data = await hasuraMutation<Result>(CREATE_RESTAURANT, { object })
+
+    const restaurant = data.insert_restaurants_one
+    if (googlePlaceId && restaurant) {
+      void upsertGooglePlaceCacheSafe({
+        google_place_id: googlePlaceId,
+        name: body.title,
+        formatted_address: body.listing_street ?? null,
+        latitude: body.latitude ?? null,
+        longitude: body.longitude ?? null,
+        primary_photo_url: featuredImageUrl,
+        tastyplates_restaurant_uuid: typeof restaurant.uuid === 'string' ? restaurant.uuid : null,
+        tastyplates_restaurant_slug: typeof restaurant.slug === 'string' ? restaurant.slug : null,
+      })
+    }
+
+    ok(res, { restaurant }, 201)
   } catch (error) {
     console.error('[restaurants-v2/create-restaurant]', error)
     res.status(500).json({ ok: false, error: 'Internal server error' })
