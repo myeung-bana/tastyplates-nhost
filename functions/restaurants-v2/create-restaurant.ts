@@ -2,7 +2,7 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 import { requireAuth, getUserId } from '../_lib/auth'
 import { upsertGooglePlaceCacheSafe } from '../_lib/googlePlaceCache'
-import { ingestGooglePlacePhoto } from '../_lib/ingestGooglePlacePhoto'
+import { resolveGoogleFeaturedImageUrl } from '../_lib/ingestGooglePlacePhoto'
 import { hasuraMutation } from '../_lib/hasura'
 import { ok } from '../_lib/respond'
 import { validate } from '../_lib/validate'
@@ -67,7 +67,7 @@ export default async (req: Request, res: Response): Promise<void> => {
 
     let featuredImageUrl = featuredImageInput?.trim() || null
     if (!featuredImageUrl && googlePhotoReference?.trim()) {
-      featuredImageUrl = await ingestGooglePlacePhoto(googlePhotoReference.trim(), userId, {
+      featuredImageUrl = await resolveGoogleFeaturedImageUrl(googlePhotoReference.trim(), userId, {
         filenameHint: `restaurant-${body.slug}`,
       })
     }

@@ -1,10 +1,12 @@
 import { hasuraAdmin } from './hasura'
+import { fetchPlaceCacheSafe } from './listEnrichment'
 
 const GET_RESTAURANT_FEATURED = `
   query GetRestaurantFeaturedImage($uuid: uuid!) {
     restaurants_by_pk(uuid: $uuid) {
       uuid
       featured_image_url
+      google_place_id
     }
   }
 `
@@ -37,23 +39,38 @@ function pickFirstReviewImageUrl(images: ReviewImageInput[] | null | undefined):
 }
 
 /**
- * When a restaurant has no featured image, use the first uploaded review photo.
+ * When a restaurant has no featured image, try Google place cache, then review photos.
  * Never throws — logs and continues if the update fails.
  */
 export async function backfillRestaurantFeaturedFromReview(
   restaurantUuid: string,
   images: ReviewImageInput[] | null | undefined,
 ): Promise<void> {
-  const candidateUrl = pickFirstReviewImageUrl(images)
-  if (!candidateUrl) return
-
   try {
     const data = await hasuraAdmin<{
-      restaurants_by_pk: { featured_image_url: string | null } | null
+      restaurants_by_pk: {
+        featured_image_url: string | null
+        google_place_id: string | null
+      } | null
     }>(GET_RESTAURANT_FEATURED, { uuid: restaurantUuid })
 
-    const current = data.restaurants_by_pk?.featured_image_url?.trim()
-    if (current) return
+    const row = data.restaurants_by_pk
+    if (!row) return
+    if (row.featured_image_url?.trim()) return
+
+    let candidateUrl: string | null = null
+
+    const placeId = row.google_place_id?.trim()
+    if (placeId) {
+      const cacheMap = await fetchPlaceCacheSafe([placeId])
+      candidateUrl = cacheMap.get(placeId)?.primary_photo_url?.trim() || null
+    }
+
+    if (!candidateUrl) {
+      candidateUrl = pickFirstReviewImageUrl(images)
+    }
+
+    if (!candidateUrl) return
 
     await hasuraAdmin(UPDATE_RESTAURANT_FEATURED, {
       uuid: restaurantUuid,

@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express'
+import { applyFeaturedImageFromPlaceCacheOne } from '../_lib/applyFeaturedImageFallback'
 import { hasuraQuery } from '../_lib/hasura'
 import { ok, fail } from '../_lib/respond'
 
@@ -6,7 +7,7 @@ const GET_RESTAURANT_BY_UUID = `
   query GetRestaurantByUuid($uuid: uuid!) {
     restaurants(where: { uuid: { _eq: $uuid } } limit: 1) {
       id uuid title slug status content price_range_id average_rating ratings_count listing_street
-      phone menu_url longitude latitude google_zoom featured_image_url uploaded_images
+      phone menu_url longitude latitude google_zoom featured_image_url uploaded_images google_place_id
       opening_hours address created_at updated_at published_at cuisines palates categories
     }
   }
@@ -16,7 +17,7 @@ const GET_RESTAURANT_BY_SLUG = `
   query GetRestaurantBySlug($slug: String!) {
     restaurants(where: { slug: { _eq: $slug } } limit: 1) {
       id uuid title slug status content price_range_id average_rating ratings_count listing_street
-      phone menu_url longitude latitude google_zoom featured_image_url uploaded_images
+      phone menu_url longitude latitude google_zoom featured_image_url uploaded_images google_place_id
       opening_hours address created_at updated_at published_at cuisines palates categories
     }
   }
@@ -26,7 +27,7 @@ const GET_RESTAURANT_BY_NUMERIC_ID = `
   query GetRestaurantById($id: Int!) {
     restaurants(where: { id: { _eq: $id } } limit: 1) {
       id uuid title slug status content price_range_id average_rating ratings_count listing_street
-      phone menu_url longitude latitude google_zoom featured_image_url uploaded_images
+      phone menu_url longitude latitude google_zoom featured_image_url uploaded_images google_place_id
       opening_hours address created_at updated_at published_at cuisines palates categories
     }
   }
@@ -65,7 +66,9 @@ export default async (req: Request, res: Response): Promise<void> => {
     const restaurant = result.data?.restaurants?.[0]
     if (!restaurant) return fail(res, 'Restaurant not found', 404)
 
-    ok(res, { restaurant })
+    const enrichedRestaurant = await applyFeaturedImageFromPlaceCacheOne(restaurant)
+
+    ok(res, { restaurant: enrichedRestaurant })
   } catch (error) {
     console.error('[restaurants-v2/get-restaurant-by-id]', error)
     res.status(500).json({ ok: false, error: 'Internal server error' })

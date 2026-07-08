@@ -62,3 +62,25 @@ export async function ingestGooglePlacePhoto(
     return null
   }
 }
+
+/**
+ * Prefer ingested Nhost Storage URL; fall back to a live Google Places photo URL
+ * when ingest fails (missing key, storage error, etc.).
+ */
+export async function resolveGoogleFeaturedImageUrl(
+  photoReference: string,
+  userId: string,
+  options?: { maxWidth?: number; filenameHint?: string },
+): Promise<string | null> {
+  const ref = photoReference.trim()
+  if (!ref) return null
+
+  const ingested = await ingestGooglePlacePhoto(ref, userId, options)
+  if (ingested) return ingested
+
+  const fallbackUrl = buildGooglePlacePhotoUrl(ref, options?.maxWidth ?? 1200)
+  if (fallbackUrl) {
+    console.warn('[ingestGooglePlacePhoto] using Google photo URL fallback (ingest failed)')
+  }
+  return fallbackUrl
+}

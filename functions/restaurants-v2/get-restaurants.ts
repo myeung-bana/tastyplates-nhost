@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express'
+import { applyFeaturedImageFromPlaceCache } from '../_lib/applyFeaturedImageFallback'
 import { hasuraQuery } from '../_lib/hasura'
 import { ok, fail } from '../_lib/respond'
 
@@ -129,7 +130,7 @@ export default async (req: Request, res: Response): Promise<void> => {
         listing_street: string | null; longitude: number | null; latitude: number | null
         featured_image_url: string | null; address: unknown; cuisines: unknown; palates: unknown
         categories: unknown; is_main_location: boolean | null; created_at: string
-        updated_at: string; published_at: string | null
+        updated_at: string; published_at: string | null; google_place_id: string | null
       }>
       restaurants_aggregate: { aggregate: { count: number } }
     }
@@ -176,6 +177,8 @@ export default async (req: Request, res: Response): Promise<void> => {
         .filter(r => radius_km === undefined || r._distance === null || r._distance <= radius_km)
         .sort((a, b) => (a._distance ?? Infinity) - (b._distance ?? Infinity))
     }
+
+    filteredRestaurants = await applyFeaturedImageFromPlaceCache(filteredRestaurants)
 
     // Build next cursor
     const lastItem = filteredRestaurants[filteredRestaurants.length - 1]
