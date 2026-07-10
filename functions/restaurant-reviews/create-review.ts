@@ -8,6 +8,7 @@ import {
   ReviewRatingSchema,
 } from '../_lib/reviewSchemas'
 import { backfillRestaurantFeaturedFromReview } from '../_lib/restaurantFeaturedImage'
+import { scheduleRatingSummaryRebuild } from '../_lib/rebuildRatingSummary'
 import { ok } from '../_lib/respond'
 import { validate } from '../_lib/validate'
 
@@ -45,7 +46,7 @@ export default async (req: Request, res: Response): Promise<void> => {
       .map((tag) => tag.replace(/^#/, '').toLowerCase().trim())
       .filter(Boolean)
 
-    // TODO: Rating rebuild should be triggered asynchronously via a Hasura event trigger
+    // Rating aggregates rebuilt asynchronously after insert.
     type Result = { insert_restaurant_reviews_one: unknown }
     const reviewImages = body.images?.length ? body.images : null
 
@@ -65,6 +66,8 @@ export default async (req: Request, res: Response): Promise<void> => {
     })
 
     await backfillRestaurantFeaturedFromReview(body.restaurant_uuid, reviewImages)
+
+    scheduleRatingSummaryRebuild(body.restaurant_uuid)
 
     ok(res, { review: data.insert_restaurant_reviews_one }, 201)
   } catch (error) {

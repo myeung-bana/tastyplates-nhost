@@ -7,6 +7,7 @@ import {
   ReviewImageSchema,
   ReviewRatingSchema,
 } from '../_lib/reviewSchemas'
+import { scheduleRatingSummaryRebuild } from '../_lib/rebuildRatingSummary'
 import { ok, fail } from '../_lib/respond'
 import { validate } from '../_lib/validate'
 
@@ -73,6 +74,8 @@ export default async (req: Request, res: Response): Promise<void> => {
 
     type UpdateResult = { update_restaurant_reviews_by_pk: unknown }
     const data = await hasuraMutation<UpdateResult>(UPDATE_REVIEW, { id, changes })
+
+    scheduleRatingSummaryRebuild(review.restaurant_uuid)
 
     ok(res, { review: data.update_restaurant_reviews_by_pk })
   } catch (error) {

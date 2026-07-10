@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express'
 import { requireAuth, getUserId } from '../_lib/auth'
 import { hasuraQuery, hasuraMutation } from '../_lib/hasura'
+import { scheduleRatingSummaryRebuild } from '../_lib/rebuildRatingSummary'
 import { ok, fail } from '../_lib/respond'
 
 const GET_REVIEW_AUTHOR = `
@@ -46,6 +47,8 @@ export default async (req: Request, res: Response): Promise<void> => {
 
     type DeleteResult = { update_restaurant_reviews_by_pk: unknown }
     await hasuraMutation<DeleteResult>(DELETE_REVIEW, { id })
+
+    scheduleRatingSummaryRebuild(review.restaurant_uuid)
 
     ok(res, { deleted: true, id })
   } catch (error) {
