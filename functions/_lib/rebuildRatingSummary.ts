@@ -1,4 +1,8 @@
 import { hasuraAdmin, hasuraQuery } from './hasura'
+import {
+  applyGoogleRatingPrior,
+  fetchGoogleRatingPriorForRestaurant,
+} from './googleRatingPrior'
 import { hasMatchingPalates, normalizePalates } from './palateUtils'
 import { buildAuthorProfileMap } from './review-enrichment'
 
@@ -185,6 +189,7 @@ export async function rebuildRatingSummary(restaurantUuid: string): Promise<void
   }
 
   const reviews = reviewsResult.data?.restaurant_reviews ?? []
+  const googlePriorRating = await fetchGoogleRatingPriorForRestaurant(uuid)
   const authorIds = reviews
     .map((r) => r.author_id?.trim())
     .filter((id): id is string => Boolean(id))
@@ -217,6 +222,9 @@ export async function rebuildRatingSummary(restaurantUuid: string): Promise<void
       authentic.count += 1
     }
   }
+
+  applyGoogleRatingPrior(overall, googlePriorRating)
+  applyGoogleRatingPrior(authentic, googlePriorRating)
 
   const overallAvg = overall.count > 0 ? overall.sum / overall.count : null
   const overallWeighted = overallAvg !== null ? bayesianWeighted(overallAvg, overall.count) : null

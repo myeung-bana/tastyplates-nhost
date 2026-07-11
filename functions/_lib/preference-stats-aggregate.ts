@@ -1,4 +1,8 @@
 import { hasuraQuery } from './hasura'
+import {
+  fetchGoogleRatingPriorMap,
+  mergeGoogleRatingPriorsIntoAccumulator,
+} from './googleRatingPrior'
 import { REVIEW_AUTHOR_GRAPHQL_NESTED } from './review-enrichment'
 
 const GET_REVIEWS_FOR_PREFERENCE = `
@@ -98,6 +102,9 @@ export async function aggregatePreferenceStatsByPalates(
     cur.count += 1
     acc.set(restaurantUuid, cur)
   }
+
+  const googlePriorMap = await fetchGoogleRatingPriorMap()
+  mergeGoogleRatingPriorsIntoAccumulator(acc, googlePriorMap)
 
   const out: PreferenceStatsMap = {}
   for (const [uuid, { sum, count }] of acc.entries()) {

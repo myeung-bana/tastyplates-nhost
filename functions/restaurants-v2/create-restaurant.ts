@@ -2,7 +2,9 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 import { requireAuth, getUserId } from '../_lib/auth'
 import { upsertGooglePlaceCacheSafe } from '../_lib/googlePlaceCache'
+import { normalizeGoogleRatingPrior } from '../_lib/googleRatingPrior'
 import { resolveGoogleFeaturedImageUrl } from '../_lib/ingestGooglePlacePhoto'
+import { scheduleRatingSummaryRebuild } from '../_lib/rebuildRatingSummary'
 import { hasuraMutation } from '../_lib/hasura'
 import { ok } from '../_lib/respond'
 import { validate } from '../_lib/validate'
@@ -19,6 +21,8 @@ const CreateRestaurantSchema = z.object({
   featured_image_url: z.string().optional(),
   google_place_id: z.string().min(1).max(500).optional(),
   google_photo_reference: z.string().min(1).max(500).optional(),
+  google_rating: z.number().min(0).max(5).optional(),
+  user_ratings_total: z.number().int().min(0).optional(),
   cuisines: z.unknown().optional(),
   palates: z.unknown().optional(),
   categories: z.unknown().optional(),
@@ -59,11 +63,18 @@ export default async (req: Request, res: Response): Promise<void> => {
     const {
       google_place_id: googlePlaceIdInput,
       google_photo_reference: googlePhotoReference,
+      google_rating: googleRatingInput,
+      user_ratings_total: userRatingsTotalInput,
       featured_image_url: featuredImageInput,
       ...restaurantFields
     } = body
 
     const googlePlaceId = resolveGooglePlaceId(googlePlaceIdInput, body.address)
+    const googleRating = normalizeGoogleRatingPrior(googleRatingInput)
+    const userRatingsTotal =
+      userRatingsTotalInput != null && Number.isFinite(userRatingsTotalInput)
+        ? Math.max(0, Math.floor(userRatingsTotalInput))
+        : null
 
     let featuredImageUrl = featuredImageInput?.trim() || null
     if (!featuredImageUrl && googlePhotoReference?.trim()) {
@@ -80,17 +91,25 @@ export default async (req: Request, res: Response): Promise<void> => {
     const data = await hasuraMutation<Result>(CREATE_RESTAURANT, { object })
 
     const restaurant = data.insert_restaurants_one
+    const restaurantUuid = typeof restaurant?.uuid === 'string' ? restaurant.uuid : null
+
     if (googlePlaceId && restaurant) {
-      void upsertGooglePlaceCacheSafe({
+      await upsertGooglePlaceCacheSafe({
         google_place_id: googlePlaceId,
         name: body.title,
         formatted_address: body.listing_street ?? null,
         latitude: body.latitude ?? null,
         longitude: body.longitude ?? null,
         primary_photo_url: featuredImageUrl,
-        tastyplates_restaurant_uuid: typeof restaurant.uuid === 'string' ? restaurant.uuid : null,
+        google_rating: googleRating,
+        user_ratings_total: userRatingsTotal,
+        tastyplates_restaurant_uuid: restaurantUuid,
         tastyplates_restaurant_slug: typeof restaurant.slug === 'string' ? restaurant.slug : null,
       })
+    }
+
+    if (restaurantUuid) {
+      scheduleRatingSummaryRebuild(restaurantUuid)
     }
 
     ok(res, { restaurant }, 201)

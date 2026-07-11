@@ -52,6 +52,7 @@ export default async (req: Request, res: Response): Promise<void> => {
     const palate_ids = url.searchParams.get('palate_ids')?.split(',').map(Number).filter(n => !isNaN(n))
     const palate_slugs = url.searchParams.get('palate_slugs')?.split(',').filter(Boolean)
     const category_ids = url.searchParams.get('category_ids')?.split(',').map(Number).filter(n => !isNaN(n))
+    const category_slugs = url.searchParams.get('category_slugs')?.split(',').filter(Boolean)
     const price_range_id = url.searchParams.get('price_range_id') ? parseInt(url.searchParams.get('price_range_id')!) : undefined
     const min_rating = url.searchParams.get('min_rating') ? parseFloat(url.searchParams.get('min_rating')!) : undefined
     const max_rating = url.searchParams.get('max_rating') ? parseFloat(url.searchParams.get('max_rating')!) : undefined
@@ -85,6 +86,13 @@ export default async (req: Request, res: Response): Promise<void> => {
     if (palate_ids?.length) conditions.push({ palates: { _contains: palate_ids.map(id => ({ id })) } })
     if (palate_slugs?.length) conditions.push({ palates: { _contains: palate_slugs.map(slug => ({ slug })) } })
     if (category_ids?.length) conditions.push({ categories: { _contains: category_ids.map(id => ({ id })) } })
+    if (category_slugs?.length === 1) {
+      conditions.push({ categories: { _contains: [{ slug: category_slugs[0] }] } })
+    } else if (category_slugs && category_slugs.length > 1) {
+      conditions.push({
+        _or: category_slugs.map((slug) => ({ categories: { _contains: [{ slug }] } })),
+      })
+    }
     if (price_range_id !== undefined && !isNaN(price_range_id)) conditions.push({ price_range_id: { _eq: price_range_id } })
     if (min_rating !== undefined && !isNaN(min_rating)) conditions.push({ average_rating: { _gte: min_rating } })
     if (max_rating !== undefined && !isNaN(max_rating)) conditions.push({ average_rating: { _lte: max_rating } })
