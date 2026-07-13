@@ -3,7 +3,9 @@ import {
   createUserProfile,
   getProfileById,
   toLegacyUser,
+  updateUserProfile,
 } from '../_lib/user-profile'
+import { buildUserLocationProfileChanges } from '../_lib/userLocationProfile'
 import { resolveAuth } from '../_lib/auth-guard'
 import { ok, fail } from '../_lib/respond'
 
@@ -12,7 +14,7 @@ export default async (req: Request, res: Response): Promise<void> => {
     const auth = await resolveAuth(req, res)
     if (!auth) return
 
-    const body = req.body as {
+    const body = req.body as Record<string, unknown> & {
       username?: string
       about_me?: string
       birthdate?: string
@@ -31,6 +33,15 @@ export default async (req: Request, res: Response): Promise<void> => {
       return fail(res, 'Profile already exists for this user', 409)
     }
 
+    let locationFields: Record<string, unknown> = {}
+    try {
+      locationFields = await buildUserLocationProfileChanges(body)
+    } catch (locationError) {
+      const message =
+        locationError instanceof Error ? locationError.message : 'Invalid location'
+      return fail(res, message, 400)
+    }
+
     await createUserProfile({
       user_id: auth.userId,
       username: body.username,
@@ -41,6 +52,13 @@ export default async (req: Request, res: Response): Promise<void> => {
       palates: body.palates ?? null,
       onboarding_complete: body.onboarding_complete ?? false,
     })
+
+    if (Object.keys(locationFields).length > 0) {
+      await updateUserProfile(auth.userId, {
+        ...locationFields,
+        updated_at: new Date().toISOString(),
+      })
+    }
 
     const profile = await getProfileById(auth.userId)
     if (!profile) {

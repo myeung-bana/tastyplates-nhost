@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 import { requireAuth, getUserId } from '../_lib/auth'
+import { resolveEffectiveFeaturedImageUrl } from '../_lib/featuredImageUtils'
 import { upsertGooglePlaceCacheSafe } from '../_lib/googlePlaceCache'
 import { normalizeGoogleRatingPrior } from '../_lib/googleRatingPrior'
 import { resolveGoogleFeaturedImageUrl } from '../_lib/ingestGooglePlacePhoto'
@@ -76,7 +77,7 @@ export default async (req: Request, res: Response): Promise<void> => {
         ? Math.max(0, Math.floor(userRatingsTotalInput))
         : null
 
-    let featuredImageUrl = featuredImageInput?.trim() || null
+    let featuredImageUrl = resolveEffectiveFeaturedImageUrl(featuredImageInput)
     if (!featuredImageUrl && googlePhotoReference?.trim()) {
       featuredImageUrl = await resolveGoogleFeaturedImageUrl(googlePhotoReference.trim(), userId, {
         filenameHint: `restaurant-${body.slug}`,

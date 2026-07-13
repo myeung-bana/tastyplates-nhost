@@ -3,10 +3,11 @@ import {
   getProfileById,
   toLegacyUser,
   updateUserAvatar,
-  updateUserLocale,
   updateUserDisplayName,
+  updateUserLocale,
   updateUserProfile,
 } from '../_lib/user-profile'
+import { buildUserLocationProfileChanges } from '../_lib/userLocationProfile'
 import { resolveAuth } from '../_lib/auth-guard'
 import { ok, fail } from '../_lib/respond'
 
@@ -32,7 +33,7 @@ export default async (req: Request, res: Response): Promise<void> => {
     const auth = await resolveAuth(req, res)
     if (!auth) return
 
-    const body = req.body as {
+    const body = req.body as Record<string, unknown> & {
       username?: string
       display_name?: string
       about_me?: string
@@ -60,6 +61,15 @@ export default async (req: Request, res: Response): Promise<void> => {
     if (body.palates !== undefined) profileChanges.palates = body.palates
     if (body.onboarding_complete !== undefined) {
       profileChanges.onboarding_complete = body.onboarding_complete
+    }
+
+    try {
+      const locationChanges = await buildUserLocationProfileChanges(body)
+      Object.assign(profileChanges, locationChanges)
+    } catch (locationError) {
+      const message =
+        locationError instanceof Error ? locationError.message : 'Invalid location'
+      return fail(res, message, 400)
     }
 
     const hasProfileChanges = Object.keys(profileChanges).length > 0

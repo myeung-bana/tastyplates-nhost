@@ -1,4 +1,8 @@
 import { hasuraAdmin } from './hasura'
+import {
+  needsFeaturedImageBackfill,
+  resolveEffectiveFeaturedImageUrl,
+} from './featuredImageUtils'
 import { fetchPlaceCacheSafe } from './listEnrichment'
 
 const GET_RESTAURANT_FEATURED = `
@@ -32,14 +36,15 @@ function pickFirstReviewImageUrl(images: ReviewImageInput[] | null | undefined):
     (a, b) => (a.display_order ?? 0) - (b.display_order ?? 0),
   )
   for (const img of sorted) {
-    const url = img.url?.trim()
-    if (url && url.startsWith('http')) return url
+    const url = resolveEffectiveFeaturedImageUrl(img.url)
+    if (url) return url
   }
   return null
 }
 
 /**
- * When a restaurant has no featured image, try Google place cache, then review photos.
+ * When a restaurant has no real featured image, try Google place cache, then review photos.
+ * Placeholder sentinel URLs are treated as missing and may be replaced.
  * Never throws — logs and continues if the update fails.
  */
 export async function backfillRestaurantFeaturedFromReview(
@@ -56,14 +61,16 @@ export async function backfillRestaurantFeaturedFromReview(
 
     const row = data.restaurants_by_pk
     if (!row) return
-    if (row.featured_image_url?.trim()) return
+    if (!needsFeaturedImageBackfill(row.featured_image_url)) return
 
     let candidateUrl: string | null = null
 
     const placeId = row.google_place_id?.trim()
     if (placeId) {
       const cacheMap = await fetchPlaceCacheSafe([placeId])
-      candidateUrl = cacheMap.get(placeId)?.primary_photo_url?.trim() || null
+      candidateUrl = resolveEffectiveFeaturedImageUrl(
+        cacheMap.get(placeId)?.primary_photo_url,
+      )
     }
 
     if (!candidateUrl) {

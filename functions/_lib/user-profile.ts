@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 
 import { hasuraAdmin, hasuraMutation } from './hasura'
+import { snapshotFromProfileRow, type UserLocationSnapshot } from './userLocationProfile'
 
 const PROFILE_FIELDS = `
   user_id
@@ -18,6 +19,15 @@ const PROFILE_FIELDS = `
   zip_code
   latitude
   longitude
+  current_location_id
+  current_location_slug
+  current_latitude
+  current_longitude
+  hometown_location_id
+  hometown_location_slug
+  hometown_latitude
+  hometown_longitude
+  location_profile_updated_at
   user {
     id
     email
@@ -45,6 +55,15 @@ export interface UserProfileRow {
   zip_code?: string | null
   latitude?: number | null
   longitude?: number | null
+  current_location_id?: number | null
+  current_location_slug?: string | null
+  current_latitude?: number | null
+  current_longitude?: number | null
+  hometown_location_id?: number | null
+  hometown_location_slug?: string | null
+  hometown_latitude?: number | null
+  hometown_longitude?: number | null
+  location_profile_updated_at?: string | null
   user: {
     id: string
     email: string
@@ -70,6 +89,8 @@ export interface PublicUserProfile {
   onboarding_complete: boolean
   locale: string | null
   created_at: string
+  current_location: UserLocationSnapshot | null
+  hometown: UserLocationSnapshot | null
 }
 
 /** Legacy shape for routes that still mirror restaurant_users field names. */
@@ -87,6 +108,8 @@ export interface LegacyRestaurantUser {
   zip_code?: string | null
   latitude?: number | null
   longitude?: number | null
+  current_location: UserLocationSnapshot | null
+  hometown: UserLocationSnapshot | null
   palates: unknown
   language_preference: string | null
   auth_method?: string
@@ -96,6 +119,13 @@ export interface LegacyRestaurantUser {
 }
 
 const ACTIVE_ONLY = { deleted_at: { _is_null: true } }
+
+function readLocationSnapshot(
+  row: UserProfileRow,
+  prefix: 'current' | 'hometown',
+): UserLocationSnapshot | null {
+  return snapshotFromProfileRow(row as unknown as Record<string, unknown>, prefix)
+}
 
 export function toPublicProfile(row: UserProfileRow): PublicUserProfile {
   return {
@@ -112,11 +142,15 @@ export function toPublicProfile(row: UserProfileRow): PublicUserProfile {
     onboarding_complete: row.onboarding_complete,
     locale: row.user.locale,
     created_at: row.created_at,
+    current_location: readLocationSnapshot(row, 'current'),
+    hometown: readLocationSnapshot(row, 'hometown'),
   }
 }
 
 export function toLegacyUser(row: UserProfileRow): LegacyRestaurantUser {
   const avatarUrl = row.user.avatarUrl
+  const currentLocation = readLocationSnapshot(row, 'current')
+  const hometown = readLocationSnapshot(row, 'hometown')
   return {
     id: row.user.id,
     username: row.username,
@@ -129,8 +163,10 @@ export function toLegacyUser(row: UserProfileRow): LegacyRestaurantUser {
     pronoun: row.pronoun,
     address: row.address ?? null,
     zip_code: row.zip_code ?? null,
-    latitude: row.latitude ?? null,
-    longitude: row.longitude ?? null,
+    latitude: currentLocation?.latitude ?? row.latitude ?? null,
+    longitude: currentLocation?.longitude ?? row.longitude ?? null,
+    current_location: currentLocation,
+    hometown,
     palates: row.palates,
     language_preference: row.user.locale,
     auth_method: row.user.metadata?.provider ?? 'password',
