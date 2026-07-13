@@ -23,10 +23,14 @@ const PROFILE_FIELDS = `
   current_location_slug
   current_latitude
   current_longitude
+  current_location_label
+  current_google_place_id
   hometown_location_id
   hometown_location_slug
   hometown_latitude
   hometown_longitude
+  hometown_location_label
+  hometown_google_place_id
   location_profile_updated_at
   user {
     id
@@ -59,10 +63,14 @@ export interface UserProfileRow {
   current_location_slug?: string | null
   current_latitude?: number | null
   current_longitude?: number | null
+  current_location_label?: string | null
+  current_google_place_id?: string | null
   hometown_location_id?: number | null
   hometown_location_slug?: string | null
   hometown_latitude?: number | null
   hometown_longitude?: number | null
+  hometown_location_label?: string | null
+  hometown_google_place_id?: string | null
   location_profile_updated_at?: string | null
   user: {
     id: string
