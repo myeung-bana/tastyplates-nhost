@@ -2,7 +2,7 @@
 
 This document describes every HTTP function exposed by `tastyplates-nhost/functions`, how URLs are formed, how authentication works, and how to call the API from a frontend or backend client.
 
-For code-writing rules, see [AI_rules.md](./AI_rules.md). For migration context from Next.js `/api/v1`, see [decouple-plan.md](./decouple-plan.md). For Hasura metadata, deploy, media upload infra, and troubleshooting, see [api-doc-v3.md](./api-doc-v3.md).
+For code-writing rules, see [AI_rules.md](./AI_rules.md). For migration context from Next.js `/api/v1`, see [decouple-plan.md](./decouple-plan.md). For Hasura metadata, deploy, media upload infra, profile locations, and troubleshooting, see [api-doc-v4.md](./api-doc-v4.md). For rating/score product logic, see [score-calculation.md](./score-calculation.md).
 
 ---
 
@@ -302,16 +302,17 @@ Legend for `Auth`: `None`, `Bearer`, `Optional Bearer`, `Admin header`
 | `restaurant-reviews/get-reviews-by-restaurant` | GET | None | Reviews by restaurant |
 | `restaurant-reviews/get-user-reviews` | GET | Optional Bearer | Approved reviews public; private statuses require owner Bearer |
 | `restaurant-reviews/get-following-feed` | GET | Bearer | Feed for the authenticated user’s follows |
+| `restaurant-reviews/get-user-activity` | GET | Optional Bearer | Mixed activity feed for a profile (`user_id`, `limit`, `offset`) |
 | `restaurant-reviews/get-replies` | GET | None | Thread replies for a review |
 | `restaurant-reviews/get-draft-reviews` | GET | Bearer | Current user’s drafts |
 
-List/detail review handlers query Hasura via the **`author`** relationship (`restaurant_reviews` → `user_profiles`), then run **`_lib/review-enrichment.ts`**: merge nested `author` into response **`AuthorProfile`**, batch-fill missing profiles, and attach `restaurant: { uuid, title, slug }` on feed-style endpoints (`get-following-feed`, `get-user-reviews`, `restaurant-users/get-reviews`, drafts). Mobile clients should read **`AuthorProfile`** (not legacy `restaurant_users`).
+List/detail review handlers query Hasura via the **`AuthorProfile`** relationship (`restaurant_reviews` → `user_profiles`), then run **`_lib/review-enrichment.ts`**: merge nested profile into response **`AuthorProfile`**, batch-fill missing profiles, and attach `restaurant: { uuid, title, slug }` on feed-style endpoints (`get-following-feed`, `get-user-reviews`, `get-user-activity`, `restaurant-users/get-reviews`, drafts). Mobile clients should read **`AuthorProfile`** (not legacy `restaurant_users` or `author`).
 
 ### 8.5 Reviews — writes (`restaurant-reviews/`)
 
 | Path | Typical method | Auth | Description |
 |---|---|---|---|
-| `restaurant-reviews/create-review` | POST | Bearer | Create review with validated JSON body |
+| `restaurant-reviews/create-review` | POST | Bearer | Create review; `rating` 0.5–5.0 in half-star steps |
 | `restaurant-reviews/update-review` | POST | Bearer | Update review by `id` |
 | `restaurant-reviews/delete-review` | GET / DELETE | Bearer | Delete review by query `id` |
 | `restaurant-reviews/create-comment` | POST | Bearer | Create comment on a review |
@@ -321,9 +322,10 @@ List/detail review handlers query Hasura via the **`author`** relationship (`res
 
 | Path | Typical method | Auth | Description |
 |---|---|---|---|
-| `restaurant-users/create-restaurant-user` | POST | Bearer | Creates `user_profiles` for the authenticated user (JWT `user_id` only) |
-| `users/me` | GET | Bearer | Current user profile from JWT (`user_profiles` + `auth.users`) |
-| `restaurant-users/update-restaurant-user` | POST | Bearer | Update current user profile (`user_profiles` + `auth.users` avatar/locale/displayName) |
+| `restaurant-users/create-restaurant-user` | POST | Bearer | Creates `user_profiles` for the authenticated user (JWT `user_id` only); accepts `current_location` / `hometown` |
+| `restaurant-users/ensure-profile` | POST | Bearer | Idempotent profile bootstrap (`user_<hex>` placeholder if missing); returns `{ user, created }` |
+| `users/me` | GET | Bearer | Current user flat `PublicUserProfile` (palates, locations, onboarding flag) |
+| `restaurant-users/update-restaurant-user` | POST | Bearer | Update profile, avatar, locations, palates, onboarding |
 | `restaurant-users/delete-restaurant-user` | POST | Bearer | Delete current user; `hard=true` optional |
 | `restaurant-users/follow` | POST | Bearer | Follow another user |
 | `restaurant-users/unfollow` | POST | Bearer | Unfollow another user |
@@ -382,6 +384,11 @@ List/detail review handlers query Hasura via the **`author`** relationship (`res
 | Path | Typical method | Auth | Description |
 |---|---|---|---|
 | `admin/backfill-rating-summary` | POST | Admin header | Rebuild rating summaries |
+| `admin/backfill-user-profiles` | POST | Admin header | Ensure `user_profiles` rows for auth users (`limit`, `offset`, `dry_run`) |
+| `admin/backfill-featured-images` | POST | Admin header | Ingest Google photos for restaurants missing featured image (`limit`, `dry_run`) |
+| `admin/moderate-review` | POST | Admin header | Set review `status` + schedule rating rebuild (`id`, `status`, optional `moderation_note`) |
+| `admin/update-user-profile` | POST | Admin header | Admin edit of any user profile (locations validated like mobile) |
+| `admin/update-restaurant` | POST | Admin header | Admin edit restaurant (`uuid`, `status`, taxonomy fields, etc.) |
 | `monitoring/graphql-stats` | GET | None | Monitoring stub; `403` in production |
 
 ---
@@ -437,6 +444,7 @@ Read endpoints for public content require no auth.
 | `GET` | `restaurant-lists/get-list-by-uuid?uuid=` | Optional Bearer | Same as get-list-by-slug; keyed by list uuid |
 | `GET` | `restaurant-lists/get-list-by-share-token?token=` | None | Capability-URL access for private lists |
 | `GET` | `restaurant-lists/get-public-lists?page=&limit=` | None | Paginated community lists |
+| `GET` | `restaurant-lists/get-user-public-lists?owner_id=` | None | Public lists for a user profile (Lists tab) |
 | `POST` | `restaurant-lists/regenerate-share-token` | Bearer | Invalidate old share link; issue new token |
 
 ### Request/response reference
@@ -626,6 +634,8 @@ curl -sS -X PATCH "$BASE/restaurant-lists/update-list" \
 
 | Document | Purpose |
 |---|---|
+| [api-doc-v4.md](./api-doc-v4.md) | Hasura deploy, media upload, profile locations, troubleshooting |
+| [score-calculation.md](./score-calculation.md) | Overall, Authentic, Search/Your, Shared scores |
 | [AI_rules.md](./AI_rules.md) | Non-negotiable implementation rules for functions |
 | [decouple-plan.md](./decouple-plan.md) | Migration plan from Next.js `/api/v1` |
 

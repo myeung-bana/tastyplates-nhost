@@ -1,13 +1,15 @@
-# Tastyplates Nhost — API & Hasura (v3)
+# Tastyplates Nhost — API & Hasura (v4)
 
-Combined reference for **Hasura setup**, **deploy operations**, **media upload (Nhost Storage)**, and how they connect to **Nhost Functions** and the mobile app.
+Combined reference for **Hasura setup**, **deploy operations**, **media upload (Nhost Storage)**, **user profile locations**, **auth/onboarding**, and how they connect to **Nhost Functions** and the mobile app.
 
-**Supersedes:** [api-doc-v2.md](./api-doc-v2.md) — v3 adds the Nhost Storage upload pipeline, `media_assets` catalog, restaurant-lists prerequisites, and upload troubleshooting.
+**Supersedes:** `api-doc-v2.md` and `api-doc-v3.md` (removed) — v4 adds profile location fields (current residence + hometown), onboarding location payloads, `ensure-profile`, activity/public-lists endpoints, admin backfills, and a link to the score-calculation product doc.
 
 | Doc | Scope |
 |-----|--------|
-| [api-guide.md](./api-guide.md) | HTTP functions: routes, auth, request/response envelope, endpoint catalog |
-| **This doc (v3)** | Hasura layout, metadata deploy, **media upload infra**, troubleshooting, smoke tests |
+| [api-guide.md](./api-guide.md) | HTTP functions: routes, auth, request/response envelope, full endpoint catalog |
+| **This doc (v4)** | Hasura layout, metadata deploy, **media upload infra**, **profile locations**, troubleshooting, smoke tests, auth/onboarding |
+| [score-calculation.md](./score-calculation.md) | Product guide: Overall, Authentic, Search/Your, Shared scores |
+| [migrations/add_user_profiles_location.md](./migrations/add_user_profiles_location.md) | SQL + Hasura permissions for profile location columns |
 | [media_assets-hasura-setup.md](./media_assets-hasura-setup.md) | Quick checklist for `public.media_assets` |
 | [my-lists-hasura-setup.md](./my-lists-hasura-setup.md) | My Lists tables (`user_place_collections`) — client GraphQL |
 | [migrations/add_media_assets.sql](./migrations/add_media_assets.sql) | `media_assets` DDL (run manually in Nhost SQL) |
@@ -16,16 +18,28 @@ Combined reference for **Hasura setup**, **deploy operations**, **media upload (
 
 ---
 
-## What changed in v3
+## What changed in v4
 
-| Area | v2 | v3 (current) |
+| Area | v3 | v4 (current) |
 |------|----|--------------|
-| Image uploads | S3 (`PutObjectCommand`) implied in older mobile docs | **Nhost Storage** (`tasty-bucket`) + `public.media_assets` catalog |
-| Upload handlers | Not covered in v2 | `upload/image`, `upload/batch`, `admin/migrate-media` |
-| Multipart parsing | — | `req.rawBody` → `Readable.from().pipe(busboy)` (Nhost Functions) |
-| Dedup | — | SHA-256 on compressed bytes; repair orphan catalog rows on re-upload |
-| Restaurant lists | Partially in api-guide only | Hasura relationship + upload URL flow documented here |
-| Secrets | Admin + JWT | + `MEDIA_STORAGE_BUCKET`, optional `IMAGE_*`, `MEDIA_MIGRATION_ACTOR_ID` |
+| Profile locations | Not documented | `current_location` + `hometown` on create/update; CMS slug or Google city; SQL migration |
+| Onboarding | Username + palates only | Three-step flow: username → current + hometown → palates |
+| Profile bootstrap | `create-restaurant-user` only | + `ensure-profile` (idempotent placeholder `user_<hex>`) |
+| `users/me` | Listed in api-guide | Flat `PublicUserProfile` with location snapshots documented here |
+| Activity feed | — | `restaurant-reviews/get-user-activity` |
+| Public lists on profile | — | `restaurant-lists/get-user-public-lists` |
+| Admin backfills | `backfill-rating-summary` | + `backfill-user-profiles`, `backfill-featured-images` |
+| Avatar storage | `user_profiles.profile_image` in v3 table | Primary avatar: `auth.users.avatarUrl` via `update-restaurant-user` |
+| Scores | Not in api-doc | See [score-calculation.md](./score-calculation.md) |
+
+### What changed in v3 (carried forward)
+
+| Area | v2 | v3 |
+|------|----|----|
+| Image uploads | S3 implied | **Nhost Storage** (`tasty-bucket`) + `public.media_assets` catalog |
+| Upload handlers | Not covered | `upload/image`, `upload/batch`, `admin/migrate-media` |
+| Multipart parsing | — | `req.rawBody` → `Readable.from().pipe(busboy)` |
+| Restaurant lists | Partially in api-guide | Hasura relationship + upload URL flow documented |
 
 ---
 
@@ -195,7 +209,7 @@ Catalog insert failures surface as **500** with message like `Failed to save med
 
 | Feature | Column / field | Set via |
 |---------|----------------|---------|
-| Profile photo | `user_profiles.profile_image` | `upload/image` → `update-restaurant-user` |
+| Profile photo | `auth.users.avatarUrl` | `upload/image` → `update-restaurant-user` (`profile_image` URL) |
 | List cover | `recommended_restaurant_lists.display_pic` | `upload/image` → `create-list` / `update-list` |
 | Review photos | `restaurant_reviews.images` (array) | `upload/image` per photo → `create-review` |
 | Restaurant featured image | `restaurants.featured_image_url` | Admin / migrate path |
@@ -303,7 +317,7 @@ Each should return the table name, not `NULL`.
 | Table | Required for | Upload-related |
 |-------|----------------|----------------|
 | `restaurant_reviews` | Feeds, studio, review CRUD | Review `images[]` URLs |
-| `user_profiles` | Author enrichment, profiles | `profile_image` |
+| `user_profiles` | Author enrichment, profiles, **location fields** | Avatar URL via nested `user` |
 | `restaurants` | Browse, enrichment | `featured_image_url` |
 | `restaurant_user_follows` | Following feed | — |
 | `media_assets` | Upload catalog, dedup | **Yes** — required for `upload/image` |
@@ -466,7 +480,8 @@ Fixing review-feed metadata does **not** automatically fix My Lists or uploads �
 | Document | Purpose |
 |----------|---------|
 | [api-guide.md](./api-guide.md) | Full HTTP endpoint catalog and client examples |
-| [api-doc-v2.md](./api-doc-v2.md) | Previous combined doc (review-feed focus) |
+| [score-calculation.md](./score-calculation.md) | How Overall, Authentic, Search/Your, and Shared scores are computed |
+| [migrations/add_user_profiles_location.md](./migrations/add_user_profiles_location.md) | Profile location SQL + Hasura permissions |
 | [AI_rules.md](./AI_rules.md) | Implementation rules for functions |
 | [media_assets-hasura-setup.md](./media_assets-hasura-setup.md) | Short `media_assets` Console steps |
 | `tastyplates-mobile/documentation/functions/media-upload.md` | Canonical cross-repo upload spec |
@@ -477,7 +492,7 @@ When in doubt about an HTTP contract, open the handler under `functions/` or see
 
 ## Part 5 — Auth & registration (mobile + web)
 
-Nhost Auth (`nhost/nhost.toml`) owns identity (`auth.users`). **`user_profiles`** is created separately via Functions — the mobile app must call **`POST restaurant-users/create-restaurant-user`** once a Bearer session exists.
+Nhost Auth (`nhost/nhost.toml`) owns identity (`auth.users`). **`user_profiles`** is created separately via Functions — the mobile app calls **`POST restaurant-users/create-restaurant-user`** or **`POST restaurant-users/ensure-profile`** once a Bearer session exists.
 
 ### Nhost Auth settings (current)
 
@@ -494,13 +509,14 @@ SMTP (Mailgun) is configured under `[provider.smtp]` for verification and passwo
 
 ```
 1. Client: nhost.auth.signUp({ email, password, options: { displayName, redirectTo } })
-           redirectTo = mobile deep link → tastyplates://user-verification (or exp+tastyplates://…)
+           redirectTo = mobile deep link → tastyplates://user-verification
 2. Nhost:  creates auth.users, sends verification email (if required)
-3. Client: if session exists → POST create-restaurant-user (Bearer)
-           if no session (needsEmailVerification) → store email locally for resend; defer step 3
+3. Client: if session exists → POST create-restaurant-user OR ensure-profile (Bearer)
+           if no session (needsEmailVerification) → store email locally; defer step 3
 4. User:   opens verification link → session restored → refreshSession
-5. Client: ensureRestaurantUserProfile → POST create-restaurant-user (placeholder username)
-6. Client: OnboardingGate → onboarding steps → POST update-restaurant-user (username, palates, onboarding_complete: true)
+5. Client: ensureRestaurantUserProfile → POST ensure-profile (placeholder username user_<hex>)
+6. Client: OnboardingGate → step1 username → step2 locations → step3 palates
+           → POST update-restaurant-user (username, palates, current_location, hometown, onboarding_complete: true)
 ```
 
 Google OAuth: session is returned on callback; run step 5 immediately in `navigateAfterAuth`.
@@ -509,11 +525,59 @@ Google OAuth: session is returned on callback; run step 5 immediately in `naviga
 
 | Step | Endpoint | Auth | Body (JSON) |
 |------|----------|------|-------------|
-| Create profile | `POST restaurant-users/create-restaurant-user` | **Bearer** | `{ username, onboarding_complete?, palates?, about_me? }` |
-| Finish onboarding | `POST restaurant-users/update-restaurant-user` | **Bearer** | `{ username, palates, onboarding_complete: true }` |
+| Create profile | `POST restaurant-users/create-restaurant-user` | **Bearer** | `{ username, onboarding_complete?, palates?, about_me?, current_location?, hometown? }` |
+| Ensure profile (idempotent) | `POST restaurant-users/ensure-profile` | **Bearer** | — (no body) |
+| Finish onboarding / edit | `POST restaurant-users/update-restaurant-user` | **Bearer** | See [Part 6](#part-6--user-profile-locations) |
+| Current user | `GET users/me` | **Bearer** | — returns flat `PublicUserProfile` |
 | Check username | `GET restaurant-users/check-username?username=` | None | — |
 
-`create-restaurant-user` returns **409** if a profile already exists for the JWT user. **404** from `update-restaurant-user` means the profile row is missing — call `create-restaurant-user` first.
+**`ensure-profile`** returns `{ user, created }` where `created: true` means a new row was inserted with placeholder username `user_<random>`. Safe to call on every post-login navigation.
+
+`create-restaurant-user` returns **409** if a profile already exists. **404** from `update-restaurant-user` means the profile row is missing — call `ensure-profile` or `create-restaurant-user` first.
+
+### Onboarding payload (step 3 completion)
+
+```json
+{
+  "username": "museryeung",
+  "palates": ["korean", "japanese"],
+  "onboarding_complete": true,
+  "current_location": {
+    "label": "Toronto, Canada",
+    "latitude": 43.6532,
+    "longitude": -79.3832,
+    "google_place_id": "ChIJpTvG15DL1IkRd8ia0ClTQ7c"
+  },
+  "hometown": {
+    "location_slug": "seoul"
+  }
+}
+```
+
+Both `current_location` and `hometown` are required in the mobile onboarding UI (step 2). Backend accepts CMS slug picks, Google city picks (label + coordinates), or `null` to clear on edit.
+
+### Profile read shapes
+
+**`GET users/me`** — flat profile for the signed-in user:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "id": 42,
+    "user_id": "uuid",
+    "username": "museryeung",
+    "display_name": "Muse",
+    "avatar_url": "https://...storage.../file",
+    "palates": ["korean", "japanese"],
+    "onboarding_complete": true,
+    "current_location": { "location_id": 12, "slug": "toronto", "label": "Toronto", "latitude": 43.65, "longitude": -79.38 },
+    "hometown": { "label": "Seoul", "slug": "seoul", "latitude": 37.57, "longitude": 126.98 }
+  }
+}
+```
+
+**`GET restaurant-users/get-restaurant-user-by-id`** — `{ user: LegacyRestaurantUser }` with nested `profile_image: { url }`, `current_location`, `hometown`.
 
 ### Mobile implementation map
 
@@ -522,38 +586,144 @@ Google OAuth: session is returned on callback; run step 5 immediately in `naviga
 | Email sign-up + password validation | `tastyplates-mobile/components/auth/RegisterEmailForm.tsx` |
 | Profile ensure after session | `tastyplates-mobile/lib/authProfileSetup.ts` → `navigateAfterAuth` |
 | Verification + resend | `tastyplates-mobile/app/user-verification.tsx` |
-| Onboarding completion | `tastyplates-mobile/services/onboardingService.ts` |
+| Onboarding (3 steps) | `tastyplates-mobile/app/onboarding/step1.tsx` … `step3.tsx` |
+| Onboarding draft + API | `tastyplates-mobile/services/onboardingService.ts` |
+| Location helpers | `tastyplates-mobile/lib/onboardingLocation.ts` |
 | Gate before tabs | `tastyplates-mobile/components/layout/OnboardingGate.tsx` |
 
 ### Redirect URLs (mobile)
 
-Add to `[auth.redirections].allowedUrls` in `nhost.toml` (already deployed):
+Add to `[auth.redirections].allowedUrls` in `nhost.toml`:
 
 - `tastyplates://user-verification`
 - `exp+tastyplates://user-verification`
 
-Used by `Linking.createURL('/user-verification')` in sign-up and resend flows.
-
 ### Registration smoke test
 
 ```bash
-AUTH="https://ygmkmxorcapgpimwerpc.auth.ap-southeast-1.nhost.run/v1"
-BASE="https://ygmkmxorcapgpimwerpc.functions.ap-southeast-1.nhost.run/v1"
+AUTH="https://<subdomain>.auth.<region>.nhost.run/v1"
+BASE="https://<subdomain>.functions.<region>.nhost.run/v1"
 
-# 1. Sign up (returns session or needs verification depending on config)
 curl -sS -X POST "$AUTH/signup/email-password" \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com","password":"password123","options":{"displayName":"Test"}}' | jq .
 
-# 2. With access token from step 1 (or after verify):
-curl -sS -X POST "$BASE/restaurant-users/create-restaurant-user" \
+curl -sS -X POST "$BASE/restaurant-users/ensure-profile" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" | jq .
+
+curl -sS -X POST "$BASE/restaurant-users/update-restaurant-user" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"username":"testuser","onboarding_complete":false}' | jq .
+  -d '{"username":"testuser","palates":["korean","japanese"],"onboarding_complete":true,"current_location":{"location_slug":"toronto"},"hometown":{"location_slug":"seoul"}}' | jq .
 ```
 
 - [ ] Sign-up accepts password ≥ 9 characters
 - [ ] Verification email sends (Mailgun SMTP configured)
-- [ ] `create-restaurant-user` returns `{ ok: true, data: { user: … } }`
-- [ ] `update-restaurant-user` sets `onboarding_complete: true` after onboarding
+- [ ] `ensure-profile` returns `{ ok: true, data: { user, created } }`
+- [ ] `update-restaurant-user` sets `onboarding_complete: true` with locations after onboarding
 - [ ] Mobile reaches home feed after verify + onboarding
+
+---
+
+## Part 6 — User profile locations
+
+Profile location fields live on `public.user_profiles`. Apply DDL from [`migrations/add_user_profiles_location.sql`](./migrations/add_user_profiles_location.sql) and follow [`migrations/add_user_profiles_location.md`](./migrations/add_user_profiles_location.md) for Hasura `user` role SELECT permissions.
+
+### Schema columns
+
+| Group | Columns |
+|-------|---------|
+| CMS-linked | `current_location_id`, `current_location_slug`, `current_latitude`, `current_longitude`, `hometown_location_id`, `hometown_location_slug`, `hometown_latitude`, `hometown_longitude` |
+| Google / free-form | `current_location_label`, `current_google_place_id`, `hometown_location_label`, `hometown_google_place_id` |
+| Metadata | `location_profile_updated_at` |
+
+### Write API (`functions/_lib/userLocationProfile.ts`)
+
+Accepted on **`create-restaurant-user`** and **`update-restaurant-user`**:
+
+**Nested objects (preferred):**
+
+```json
+{
+  "current_location": {
+    "label": "Seoul, South Korea",
+    "latitude": 37.5665,
+    "longitude": 126.9780,
+    "google_place_id": "ChIJ..."
+  },
+  "hometown": {
+    "location_slug": "toronto"
+  }
+}
+```
+
+| Input style | Required fields | Notes |
+|-------------|-----------------|-------|
+| CMS city | `location_slug` or `location_id` | Resolves against `restaurant_locations` (active rows) |
+| Google city | `label` + `latitude` + `longitude` | Optional `google_place_id` |
+| Clear | `null` for nested key | Clears stored location |
+
+**Flat legacy keys** (still accepted): `current_location_slug`, `hometown_location_slug`, `hometown_latitude`, `hometown_location_label`, `hometown_google_place_id`, etc.
+
+**Errors:** `400` with `"Invalid hometown — provide label with coordinates"` (or `current_location` variant) when Google-style input is malformed or DB columns are missing.
+
+### Read API — location snapshot
+
+Both `current_location` and `hometown` return the same snapshot shape:
+
+```json
+{
+  "location_id": 12,
+  "slug": "toronto",
+  "label": "Toronto",
+  "type": "city",
+  "latitude": 43.6532,
+  "longitude": -79.3832,
+  "google_place_id": "ChIJ..."
+}
+```
+
+`location_id` and `slug` are null for pure Google picks not linked to CMS.
+
+### Mobile city picker
+
+Onboarding step 2 and Edit Profile use `ProfileCityPickerOverlay` — CMS quick picks from `locations/get-locations` plus global Google `(cities)` autocomplete. Browse location pill syncs when a CMS slug is selected (`setLocationPreference`).
+
+---
+
+## Part 7 — Ratings & scores (overview)
+
+TastyPlates surfaces up to **four scores** on restaurant detail (mobile). Full product explanation: **[score-calculation.md](./score-calculation.md)**.
+
+| Score | API source | Auth |
+|-------|------------|------|
+| Overall | `restaurants-v2/get-rating-summary` → `overall_rating_avg` | None |
+| Authentic | `get-rating-summary` → `authentic_rating_avg` | None |
+| Search / Your | `get-preference-stats?palates=<slugs>` | None (personalised trust set computed client-side when signed in) |
+| Shared | `get-preference-stats?palates=<user profile palates>` | Signed in; mobile unlocks at ≥ 3 matching reviews |
+
+**Rebuild triggers:** Review create/update/delete schedules async `rebuildRatingSummary`. Admin: `POST admin/backfill-rating-summary` with `x-admin-secret`.
+
+**Browse fallback:** Restaurants linked to Google Places may show `google_rating` on cards when TastyPlates review count is zero. Google aggregates are folded into Overall and preference stats on the Nhost backend — see [score-calculation.md](./score-calculation.md).
+
+---
+
+## Part 8 — New endpoints since v3
+
+Documented in full in [api-guide.md](./api-guide.md). Quick reference:
+
+| Path | Method | Auth | Purpose |
+|------|--------|------|---------|
+| `restaurant-users/ensure-profile` | POST | Bearer | Idempotent profile row for JWT user |
+| `restaurant-reviews/get-user-activity` | GET | Optional Bearer | Mixed activity feed (`user_id`, `limit`, `offset`) |
+| `restaurant-lists/get-user-public-lists` | GET | None | Public lists for profile tab (`owner_id`) |
+| `admin/backfill-user-profiles` | POST | Admin header | Ensure `user_profiles` for auth users without rows |
+| `admin/backfill-featured-images` | POST | Admin header | Ingest Google photos for restaurants missing featured image |
+| `admin/moderate-review` | POST | Admin header | Set review status + schedule rating rebuild |
+| `admin/update-user-profile` | POST | Admin header | Admin edit any user (location validation parity) |
+| `admin/update-restaurant` | POST | Admin header | Publish/unpublish and restaurant field edits |
+| `restaurants-v2/create-restaurant` | POST | Bearer | Create restaurant from Google match / studio flow |
+
+**Admin header:** `x-admin-secret: <HASURA_GRAPHQL_ADMIN_SECRET>`
+
+Query params for backfills: `limit`, `offset`, `dry_run=true|false` where supported.

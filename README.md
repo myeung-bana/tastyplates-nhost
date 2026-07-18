@@ -44,14 +44,15 @@ This starts Postgres, Hasura, Auth, Functions, and related services defined in `
 
 If deploy logs show `cannot find [config.yaml]`, commit root **`config.yaml`** and set Git **Base directory** to `/` (standalone repo) or **`tastyplates-nhost`** (monorepo subfolder).
 
-If the Following feed logs `field 'AuthorProfile' not found` or `field 'author' not found`, the relationship is missing or has the wrong name on cloud — Hasura relationship must be **`AuthorProfile`**. See [api-doc-v2.md](documentation/api-doc-v2.md) (Part 2).
+If the Following feed logs `field 'AuthorProfile' not found` or `field 'author' not found`, the relationship is missing or has the wrong name on cloud — Hasura relationship must be **`AuthorProfile`**. See [api-doc-v4.md](documentation/api-doc-v4.md) (Part 3).
 
-See [documentation/api-doc-v2.md](documentation/api-doc-v2.md) (Hasura + operations), [api-guide.md](documentation/api-guide.md) (HTTP functions), and [nhost/migrations/README.md](nhost/migrations/README.md).
+See [documentation/api-doc-v4.md](documentation/api-doc-v4.md) (Hasura + operations), [api-guide.md](documentation/api-guide.md) (HTTP functions), [score-calculation.md](documentation/score-calculation.md) (ratings), and [nhost/migrations/README.md](nhost/migrations/README.md).
 
 ---
 
 ## Documentation
 
-- [API & Hasura (v2)](documentation/api-doc-v2.md) — metadata, deploy, troubleshooting
+- [API & Hasura (v4)](documentation/api-doc-v4.md) — metadata, deploy, profile locations, troubleshooting
+- [Score calculation](documentation/score-calculation.md) — Overall, Authentic, Search/Your, Shared
 - [Nhost Functions API guide](documentation/api-guide.md) — HTTP routes, auth, envelope
 - [Decouple migration plan](documentation/decouple-plan.md)
