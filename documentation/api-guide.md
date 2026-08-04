@@ -638,5 +638,10 @@ curl -sS -X PATCH "$BASE/restaurant-lists/update-list" \
 | [score-calculation.md](./score-calculation.md) | Overall, Authentic, Search/Your, Shared scores |
 | [AI_rules.md](./AI_rules.md) | Non-negotiable implementation rules for functions |
 | [decouple-plan.md](./decouple-plan.md) | Migration plan from Next.js `/api/v1` |
+| [../tasty-business-portal/documentation/admin-mcp.md](../tasty-business-portal/documentation/admin-mcp.md) | Admin MCP keys, tools, Claude/Cursor setup |
+
+### Admin MCP API keys
+
+Portal admins can generate per-user MCP API keys (table `admin_mcp_api_keys`) for Claude/Cursor automation. Keys are verified via `Authorization: Bearer tp_mcp_...` on `/api/v1/*` routes. See the admin MCP doc for migration SQL and setup.
 
 When in doubt about the exact contract for a route, open the matching handler under `functions/`.
