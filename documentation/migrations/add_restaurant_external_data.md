@@ -34,6 +34,8 @@ ORDER BY ordinal_position;
 
 ## Endpoints (after function deploy)
 
-- `POST /v1/admin/trigger-apify-scrape` — header `x-admin-secret`
+- `POST /v1/admin-api/trigger-external-scrape` — MCP Bearer, admin JWT, or `x-admin-secret`
 - `POST /v1/admin/apify-webhook` — header `x-apify-webhook-secret`
-- `GET /v1/admin/get-restaurant-external-data?restaurant_uuid=...` — header `x-admin-secret`
+- `GET /v1/admin-api/get-external-data?restaurant_uuid=...` — MCP Bearer, admin JWT, or `x-admin-secret`
+
+The business portal proxies these via `/api/v1/external-data/*` (session auth → Nhost `admin-api/*`).
