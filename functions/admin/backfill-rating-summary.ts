@@ -73,7 +73,15 @@ export default async (req: Request, res: Response): Promise<void> => {
       }
     }
 
-    ok(res, { total, rebuilt, failed })
+    let externalRebuilt = 0
+    try {
+      const { rebuildAllExternalReviewSummaries } = await import('../_lib/rebuildExternalReviewSummary')
+      externalRebuilt = await rebuildAllExternalReviewSummaries()
+    } catch (err) {
+      console.warn('[admin/backfill-rating-summary] external summary backfill skipped', err)
+    }
+
+    ok(res, { total, rebuilt, failed, external_rebuilt: externalRebuilt })
   } catch (error) {
     console.error('[admin/backfill-rating-summary]', error)
     res.status(500).json({ ok: false, error: 'Internal server error' })

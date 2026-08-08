@@ -1,26 +1,23 @@
 # Admin API migration (Option B)
 
+> **Update (2026-08):** MCP HTTP surface moved back to the Netlify portal at `/api/mcp/*`. Nhost `admin-api/*` remains deployed for legacy/internal callers but is **deprecated for MCP**. See [`tasty-business-portal/documentation/admin-mcp.md`](../../tasty-business-portal/documentation/admin-mcp.md).
+
 Move the HTTP admin API that MCP and tooling call from Netlify (`tasty-business-portal/app/api/v1/*`) to Nhost Functions (`admin-api/*`), while keeping the portal routes during migration.
 
-## Architecture
+## Current architecture (MCP)
 
 ```text
 Claude Desktop / Cursor
-  → tastyplates-admin-mcp (local stdio, npm package)
-  → Nhost Functions /v1/admin-api/*
+  → tastyplates-admin-mcp (local stdio)
+  → Netlify portal /api/mcp/*
   → Hasura / Postgres
 
 Admin UI (browser)
-  → tasty-business-portal /api/v1/*  (unchanged until Phase 5 deprecation)
+  → tasty-business-portal /api/v1/*  (unchanged)
 
-Legacy jobs / webhooks
-  → admin/* (Apify webhook, backfills — x-admin-secret / webhook secret only)
-
-Portal external-data proxy + MCP
-  → admin-api/get-external-data, admin-api/trigger-external-scrape
+Legacy / internal
+  → Nhost /v1/admin-api/*  (deprecated for MCP; external-data v1 proxy still uses some endpoints)
 ```
-
-MCP stays a **local stdio package**. Only the HTTP API moves to Nhost.
 
 ## Phases
 
@@ -28,10 +25,10 @@ MCP stays a **local stdio package**. Only the HTTP API moves to Nhost.
 |-------|--------|--------|
 | 0 | Done | `_lib/` auth, SQL, MCP keys, respond, places, quality |
 | 1 | Done | Handler libs + `functions/admin-api/*` entry points |
-| 2 | Done | `mcp-keys`, `revoke-mcp-key`, `mcp-config`, `mcp-health` |
-| 3 | Done | `tastyplates-admin-mcp` paths → `/admin-api/*` |
-| 4 | Partial | Portal `mcp-config` feature flag; UI still on portal API |
-| 5 | Future | Deprecate portal `app/api/v1` after MCP + UI validated |
+| 2 | Done | `mcp-keys`, `revoke-mcp-key`, `mcp-config`, `mcp-health` on Nhost |
+| 3 | Superseded | MCP briefly targeted Nhost `/admin-api/*` |
+| 4 | **Done** | MCP on portal `/api/mcp/*`; key auth on same Hasura path as key creation |
+| 5 | Future | Remove Nhost `admin-api/*` MCP duplicates; optional v1 deprecation |
 
 ## Nhost function endpoints
 
@@ -96,16 +93,19 @@ MCP keys live in `public.admin_mcp_api_keys` (see `documentation/migrations/add_
 
 4. Generate an MCP key from the admin portal (Settings → MCP) or via `admin-api/mcp-keys` with admin JWT.
 
-## Portal feature flag
+## Portal environment
 
-In `tasty-business-portal/.env`:
+In `tasty-business-portal/.env` (and Netlify env vars):
 
 ```env
-NEXT_PUBLIC_USE_NHOST_ADMIN_API=true
+NEXT_PUBLIC_NHOST_SUBDOMAIN=ygmkmxorcapgpimwerpc
+NEXT_PUBLIC_NHOST_REGION=ap-southeast-1
 NEXT_PUBLIC_NHOST_FUNCTIONS_URL=https://ygmkmxorcapgpimwerpc.functions.ap-southeast-1.nhost.run/v1
 ```
 
-When enabled, MCP config snippets in the portal UI point at Nhost instead of Netlify. The restaurant admin UI still uses `/api/v1/restaurants-v2/*` until Phase 5.
+The MCP settings page (`/dashboard/admin/settings/mcp`) builds Claude/Cursor config with  
+`TASTYPLATES_API_URL` = Nhost functions base URL (via `getAdminApiUrl()`).  
+Restaurant admin UI still uses `/api/v1/restaurants-v2/*` until Phase 5.
 
 ## Verify
 
