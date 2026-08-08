@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS public.restaurant_external_reviews (
   ingested_at         timestamptz   NOT NULL DEFAULT now(),
   ingest_batch_id     text,
 
-  UNIQUE (source_platform, source_review_id)
+  CONSTRAINT ext_reviews_platform_review_id_uniq
+    UNIQUE (source_platform, source_review_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_ext_reviews_restaurant_uuid

@@ -1,8 +1,9 @@
 import { hasuraAdmin, hasuraQuery } from './hasura'
-import type {
-  ExternalReviewPlatform,
-  ExternalReviewRow,
-  ExternalReviewSummaryRow,
+import {
+  EXTERNAL_REVIEW_DEDUP_CONSTRAINT,
+  type ExternalReviewPlatform,
+  type ExternalReviewRow,
+  type ExternalReviewSummaryRow,
 } from './externalReviewTypes'
 
 const UPSERT_EXTERNAL_REVIEW = `
@@ -10,7 +11,7 @@ const UPSERT_EXTERNAL_REVIEW = `
     insert_restaurant_external_reviews_one(
       object: $object
       on_conflict: {
-        constraint: restaurant_external_reviews_source_platform_source_review_id_key
+        constraint: ${EXTERNAL_REVIEW_DEDUP_CONSTRAINT}
         update_columns: [
           restaurant_uuid
           rating

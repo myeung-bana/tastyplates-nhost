@@ -3,10 +3,18 @@ import { getExternalReviewSummary } from './externalReviewQueries'
 import type { ExternalReviewSummaryRow } from './externalReviewTypes'
 
 const GET_FIRST_PARTY_SUMMARY = `
-  query GetFirstPartySummary($uuid: uuid!) {
-    restaurant_rating_summary(where: { restaurant: { uuid: { _eq: $uuid } } }, limit: 1) {
+  query GetFirstPartySummary($restaurantId: bigint!) {
+    restaurant_rating_summary(where: { restaurant_id: { _eq: $restaurantId } }, limit: 1) {
       overall_review_count
       overall_rating_avg
+    }
+  }
+`
+
+const RESOLVE_RESTAURANT_ID = `
+  query ResolveRestaurantId($uuid: uuid!) {
+    restaurants(where: { uuid: { _eq: $uuid } }, limit: 1) {
+      id
     }
   }
 `
@@ -128,13 +136,22 @@ function emptyExternalSummary(): ExternalReviewSummaryRow {
 export async function getCombinedSummary(restaurantUuid: string): Promise<CombinedSummaryResult> {
   const uuid = restaurantUuid.trim()
 
+  const resolved = await hasuraQuery<{ restaurants: Array<{ id: number }> }>(RESOLVE_RESTAURANT_ID, {
+    uuid,
+  })
+  if (resolved.errors?.length) {
+    throw new Error(resolved.errors.map((e) => e.message).join(', '))
+  }
+  const restaurantId = resolved.data?.restaurants?.[0]?.id
+  if (!restaurantId) throw new Error('Restaurant not found')
+
   const [fpSummaryResult, fpPalatesResult, externalSummary] = await Promise.all([
     hasuraQuery<{
       restaurant_rating_summary: Array<{
         overall_review_count: number
         overall_rating_avg: number | null
       }>
-    }>(GET_FIRST_PARTY_SUMMARY, { uuid }),
+    }>(GET_FIRST_PARTY_SUMMARY, { restaurantId }),
     hasuraQuery<{ restaurant_reviews: Array<{ palates: unknown }> }>(GET_FIRST_PARTY_PALATES, {
       restaurantUuid: uuid,
     }),

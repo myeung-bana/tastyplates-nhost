@@ -1,3 +1,5 @@
+export const EXTERNAL_REVIEW_DEDUP_CONSTRAINT = 'ext_reviews_platform_review_id_uniq'
+
 export const EXTERNAL_REVIEW_PLATFORMS = ['google_maps', 'yelp', 'tripadvisor'] as const
 
 export type ExternalReviewPlatform = (typeof EXTERNAL_REVIEW_PLATFORMS)[number]
