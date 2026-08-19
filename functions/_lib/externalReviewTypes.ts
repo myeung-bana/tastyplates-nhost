@@ -19,6 +19,7 @@ export interface ExternalReviewRow {
   body: string | null
   language: string | null
   palates: string[]
+  author_palates: string[]
   sentiment: ExternalReviewSentiment | null
   is_flagged: boolean
   flagged_reason: string | null

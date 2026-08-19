@@ -2,31 +2,31 @@
 
 Product and engineering guide for how restaurant ratings are computed, stored, displayed, and used for ranking.
 
-**Audience:** Product, design, mobile/web engineers, and anyone answering “where does this number come from?”
+**Audience:** Product, design, mobile/web engineers, and anyone answering "where does this number come from?"
 
 **Authoritative backend:** `tastyplates-nhost/functions/_lib/` (mobile app uses Nhost functions). The legacy web app (`tastyplates-v2-1`) has parallel logic with some differences noted below.
 
-**Related docs:** [api-guide.md](./api-guide.md) (HTTP endpoints), [api-doc-v4.md](./api-doc-v4.md) (deploy + overview)
+**Related docs:** [api-guide.md](./api-guide.md) (HTTP endpoints), [api-doc-v4.md](./api-doc-v4.md) (deploy + overview), [precompute-ratings-v2.md](./precompute-ratings-v2.md) (proposed palate-identity ranking — builds on §7 Bayesian smoothing and §11 rebuild automation below)
 
 ---
 
 ## 1. The big picture
 
-TastyPlates is not a single “star rating” product. Every restaurant can show up to **four different scores**, each answering a different question:
+TastyPlates is not a single "star rating" product. Every restaurant can show up to **four different scores**, each answering a different question:
 
 | Score | Plain-English question | Who sees it |
 |-------|------------------------|-------------|
-| **Overall** | “What does everyone think?” | Everyone |
-| **Authentic** | “Do people who actually eat this type of food think it’s good?” | Everyone |
-| **Search / Your** | “Would people with a palate like mine enjoy this?” | Guests browsing a cuisine; signed-in users get **Your Score** |
-| **Shared** | “Do people with my exact palate think it’s good?” | Signed-in users only (mobile: ≥ 3 matching reviews) |
+| **Overall** | "What does everyone think?" | Everyone |
+| **Authentic** | "Do people who actually eat this type of food think it's good?" | Everyone |
+| **Search / Your** | "Would people with a palate like mine enjoy this?" | Guests browsing a cuisine; signed-in users get **Your Score** |
+| **Shared** | "Do people with my exact palate think it's good?" | Signed-in users only (mobile: ≥ 3 matching reviews) |
 
 Think of it as zooming in on the reviewer pool:
 
 ```
 Overall        → all reviewers (+ Google on mobile backend)
-Authentic      → reviewers whose palate matches the restaurant’s cuisine
-Search / Your  → reviewers in a broader “trust set” (sibling cuisines in your region)
+Authentic      → reviewers whose palate matches the restaurant's cuisine
+Search / Your  → reviewers in a broader "trust set" (sibling cuisines in your region)
 Shared         → reviewers with your exact profile palates
 ```
 
@@ -50,12 +50,12 @@ Each zoom level is **more personal** but usually has **fewer reviews**, so we ap
 
 When a TastyPlates restaurant is linked to Google (`google_place_cache`):
 
-- We store Google’s **aggregate** star rating and **total review count** — not individual Google review rows in our aggregates.
+- We store Google's **aggregate** star rating and **total review count** — not individual Google review rows in our aggregates.
 - On the **Nhost backend**, this aggregate is **folded into**:
   - **Overall Score** (per restaurant rebuild)
   - **Search / Shared / preference stats** (live aggregation across all linked restaurants)
 
-**Human explanation:** If a restaurant has 3 TastyPlates reviews averaging 4.8 and Google shows 4.5 stars from 1,000 people, the Overall Score blends both pools so new listings are not stuck at “3 reviews” forever. We are not importing 1,000 Google reviews one-by-one — we treat Google as one weighted block.
+**Human explanation:** If a restaurant has 3 TastyPlates reviews averaging 4.8 and Google shows 4.5 stars from 1,000 people, the Overall Score blends both pools so new listings are not stuck at "3 reviews" forever. We are not importing 1,000 Google reviews one-by-one — we treat Google as one weighted block.
 
 **Browse cards:** When a row has no TastyPlates reviews yet, the card may show **`google_rating`** directly from Places data.
 
@@ -65,18 +65,18 @@ When a TastyPlates restaurant is linked to Google (`google_place_cache`):
 
 ### What it means
 
-> “What platform users (and Google, when linked) think of this restaurant overall.”
+> "What platform users (and Google, when linked) think of this restaurant overall."
 
 This is the broadest signal — no palate filtering.
 
-### How it’s calculated
+### How it's calculated
 
 1. Sum all **approved** TastyPlates review ratings for the restaurant.
 2. If linked to Google, add `google_rating × user_ratings_total` to the sum and `user_ratings_total` to the count.
 3. **Display value:** `overall_rating_avg = sum / count`
 4. **Ranking value:** `overall_rating_weighted` — Bayesian-smoothed (see §7)
 
-### Where it’s stored
+### Where it's stored
 
 | Table / column | Purpose |
 |----------------|---------|
@@ -89,7 +89,7 @@ This is the broadest signal — no palate filtering.
 
 - **API:** `GET restaurants-v2/get-rating-summary?restaurant_uuid=`
 - **Mobile display:** `overall_rating_avg`, fallback to `restaurants.average_rating`
-- **Browse “Highest Rated” sort:** `restaurants.average_rating` DESC
+- **Browse "Highest Rated" sort:** `restaurants.average_rating` DESC
 - **Auth:** None required
 
 ---
@@ -98,14 +98,14 @@ This is the broadest signal — no palate filtering.
 
 ### What it means
 
-> “Do people who actually eat this cuisine think the restaurant is good?”
+> "Do people who actually eat this cuisine think the restaurant is good?"
 
 A Korean-palate reviewer rating a Korean restaurant counts. The same person rating an Italian restaurant does **not** count toward Authentic for that Italian place.
 
-### How it’s calculated
+### How it's calculated
 
-1. Build the restaurant’s **taxonomy** from `restaurants.palates` + `restaurants.cuisines` (normalized slugs).
-2. For each approved TastyPlates review, resolve the reviewer’s palate slugs (profile first, then review snapshot).
+1. Build the restaurant's **taxonomy** from `restaurants.palates` + `restaurants.cuisines` (normalized slugs).
+2. For each approved TastyPlates review, resolve the reviewer's palate slugs (profile first, then review snapshot).
 3. Include the review if **any** reviewer palate **fuzzy-matches** **any** restaurant taxonomy slug:
    - Match rule: `a.includes(b) || b.includes(a)` after lowercasing (e.g. `korean` matches `korean-fusion`).
 4. **Display value:** `authentic_rating_avg = sum / count` over matching reviews only.
@@ -116,7 +116,7 @@ Google ratings are **not** folded into Authentic — only real TastyPlates revie
 ### API & UI
 
 - **API:** `GET restaurants-v2/get-rating-summary` → `authentic_rating_avg`
-- **Smart Sort** (`order_by=smart` on browse): sorts by `authentic_rating_weighted` DESC — surfaces “cuisine insiders” rate highly even with few reviews (after smoothing).
+- **Smart Sort** (`order_by=smart` on browse): sorts by `authentic_rating_weighted` DESC — surfaces "cuisine insiders" rate highly even with few reviews (after smoothing).
 - **Auth:** None required
 
 ### Human example
@@ -129,10 +129,10 @@ A ramen shop tagged `japanese` with reviews from users whose palates include `ja
 
 ### What it means
 
-> “How much would people with a palate like yours rate this place?”
+> "How much would people with a palate like yours rate this place?"
 
-- **Search Score** — guest or non-personalised: based on the **cuisine you’re browsing** (e.g. all `japanese` reviewers when `?cuisine=japanese`).
-- **Your Score** — signed-in + personalised: based on your **trust set** — sibling cuisines in the same region that intersect **your** profile palates (not necessarily the cuisine you’re browsing).
+- **Search Score** — guest or non-personalised: based on the **cuisine you're browsing** (e.g. all `japanese` reviewers when `?cuisine=japanese`).
+- **Your Score** — signed-in + personalised: based on your **trust set** — sibling cuisines in the same region that intersect **your** profile palates (not necessarily the cuisine you're browsing).
 
 ### Trust set (personalised — mobile)
 
@@ -148,7 +148,7 @@ Implemented in `tastyplates-mobile/lib/cuisineTaxonomy.ts` → `resolveTrustSet(
 
 **When no cuisine filter is active** (mobile browse home): Search/Your panel is **locked** — user must pick a cuisine context first.
 
-### How it’s calculated (live)
+### How it's calculated (live)
 
 **API:** `GET restaurants-v2/get-preference-stats?palates=korean,japanese`
 
@@ -164,8 +164,8 @@ Backend (`functions/_lib/preference-stats-aggregate.ts`):
 
 - Hook: `tastyplates-mobile/hooks/useRestaurantScores.ts`
 - Component: `RestaurantRatingMetricsRow.tsx`
-- Label: **“Your Score”** when `isPersonalised === true`; otherwise **“Search Score”**
-- Subtitle: “Rated by N reviewers” vs “What shared preference users think”
+- Label: **"Your Score"** when `isPersonalised === true`; otherwise **"Search Score"**
+- Subtitle: "Rated by N reviewers" vs "What shared preference users think"
 - **Auth:** None for API; personalisation requires sign-in + user palates + active cuisine filter
 
 ---
@@ -174,9 +174,9 @@ Backend (`functions/_lib/preference-stats-aggregate.ts`):
 
 ### What it means
 
-> “What do people with my exact palate think?”
+> "What do people with my exact palate think?"
 
-Uses **only** the signed-in user’s profile palate slugs — no sibling expansion.
+Uses **only** the signed-in user's profile palate slugs — no sibling expansion.
 
 **Example:** Profile palates `[korean]` → `get-preference-stats?palates=korean`
 
@@ -188,7 +188,7 @@ SHARED_SCORE_MIN_REVIEWS = 3
 
 Shared Score stays **locked** until at least **3** reviews match. This avoids showing a 5.0 from a single friend.
 
-**Copy when locked:** “Sign in to see shared score” (guest) or lock icon when authenticated but count < 3.
+**Copy when locked:** "Sign in to see shared score" (guest) or lock icon when authenticated but count < 3.
 
 ### API
 
@@ -207,7 +207,7 @@ CONFIDENCE_M = 5
 weighted = (avg × count + GLOBAL_MEAN × CONFIDENCE_M) / (count + CONFIDENCE_M)
 ```
 
-**Human explanation:** A restaurant with one 5-star review would show **5.0** to users but rank lower in Smart Sort than a 4.6 with 40 reviews. The weighted value behaves like “start at 4.0 and move toward the real average as reviews arrive.”
+**Human explanation:** A restaurant with one 5-star review would show **5.0** to users but rank lower in Smart Sort than a 4.6 with 40 reviews. The weighted value behaves like "start at 4.0 and move toward the real average as reviews arrive."
 
 | Field | Used for |
 |-------|----------|
@@ -215,6 +215,8 @@ weighted = (avg × count + GLOBAL_MEAN × CONFIDENCE_M) / (count + CONFIDENCE_M)
 | `authentic_rating_weighted` | **Smart Sort** (`order_by=smart`) |
 
 Users always see `*_avg` on the detail score panel, not the weighted number.
+
+> **Note:** [precompute-ratings-v2.md](./precompute-ratings-v2.md) reuses this exact formula for the proposed palate-identity ranking table, with an open question (its §9.3) on whether `CONFIDENCE_M` should be smaller at leaf-palate grain, where review counts per bucket are typically much lower than Overall/Authentic ever see.
 
 ---
 
@@ -231,7 +233,7 @@ display_avg   = bucket.sum / bucket.count
 **Example:**
 
 | Source | Rating | Count | Contribution |
-|--------|--------|-------|--------------|
+|--------|--------|-------|---------------|
 | TastyPlates reviews | 4.8 avg | 3 | sum +14.4, count +3 |
 | Google aggregate | 4.5 | 1000 | sum +4500, count +1000 |
 | **Combined** | — | 1003 | **4.5005** overall |
@@ -245,8 +247,8 @@ Implementation: `functions/_lib/googleRatingPrior.ts` → `applyGoogleRatingAggr
 | Sort mode | Field / logic | Question it optimises |
 |-----------|---------------|----------------------|
 | **Highest Rated** | `restaurants.average_rating` DESC | Raw overall popularity |
-| **Smart Sort** | `authentic_rating_weighted` DESC | “Insiders of this cuisine rate it highly” |
-| **Palate Sort** | Client re-rank via `sortByPalateMatch.ts` | “Best for my palate right now” |
+| **Smart Sort** | `authentic_rating_weighted` DESC | "Insiders of this cuisine rate it highly" |
+| **Palate Sort** | Client re-rank via `sortByPalateMatch.ts` | "Best for my palate right now" |
 
 ### Palate Sort comparator (client)
 
@@ -274,7 +276,9 @@ Priority order for tie-breaking:
 
 ---
 
-## 11. When scores update
+## 11. When scores update — and rebuild automation
+
+### Trigger table
 
 | Event | Action |
 |-------|--------|
@@ -285,6 +289,40 @@ Priority order for tie-breaking:
 | Admin bulk fix | `POST admin/backfill-rating-summary` with `x-admin-secret` |
 
 Preference stats (`get-preference-stats`) are **computed live** on each request — no separate cache table for Search/Shared.
+
+### How rebuilds actually fire today
+
+All summary rebuilds — Overall/Authentic (`rebuildRatingSummary`), external review aggregates (`rebuildExternalReviewSummary`), and (proposed) palate ratings (`rebuildPalateRatingSummary`) — are triggered **synchronously in-process**, from inside the HTTP handler that performed the write:
+
+```typescript
+// e.g. restaurant-reviews/create-review.ts
+await insertReview(...)
+scheduleRatingSummaryRebuild(restaurantUuid) // fire-and-forget, not a queue
+```
+
+There is **no Hasura Event Trigger and no cron function in this repo.** This means: any write that does *not* go through one of these Nhost Function handlers never triggers a rebuild. Known blind spots today:
+
+- Apify ingest scripts that insert `restaurant_external_reviews` rows directly
+- Manual edits via the Hasura console
+- Any future batch/admin tooling that writes to `restaurant_reviews` or `user_profiles` without calling the corresponding Nhost Function
+
+Summaries in these cases go stale until someone remembers to run the relevant `admin/backfill-*` endpoint by hand.
+
+### Phased plan
+
+| Phase | Mechanism | When |
+|-------|-----------|------|
+| **A (current)** | In-handler `schedule*Rebuild()`, fire-and-forget | Now — fine at current write volume |
+| **B** | Hasura Event Triggers on `restaurant_reviews`, `restaurant_external_reviews`, `user_profiles` → dedicated Nhost Function webhook | When ingest paths multiply (Apify, admin scripts, direct SQL) and blind spots above start causing visible staleness |
+| **C** | Scheduled/cron Nhost Function — nightly full rebuild across all restaurants | Once Phase B exists, as a drift-correction safety net, not a replacement for it |
+
+**Why Phase B, not just "add more `schedule*Rebuild()` calls":** every new write path is another call site someone has to remember to add. An Event Trigger fires on the row change itself, independent of which code path produced it — it closes the blind spot structurally instead of by convention.
+
+**Why Phase C in addition to B, not instead of it:** the rebuild algorithm is a full table scan per restaurant, not an incremental delta. Event triggers fire per write and are cheap individually, but they can't catch a trigger that itself failed to fire (a webhook timeout, a Hasura metadata gap after a schema change). A nightly full rebuild is a low-cost correctness backstop — same reasoning as `admin/backfill-rating-summary`, just on a schedule instead of manually invoked.
+
+**Not proposed:** moving rebuilds to a message queue (SQS/etc.) or a separate worker service. That would be new infrastructure beyond what Nhost provides natively (Event Triggers + scheduled functions cover both async decoupling and periodic reconciliation), and it doesn't match the "stay close to existing patterns" convention already established in this codebase.
+
+This same Phase A/B/C plan applies to the proposed palate rating rebuilds — see [precompute-ratings-v2.md](./precompute-ratings-v2.md) §14, including the open question (its §9.6) on whether palate ratings should skip straight to Phase B given they have more write paths from day one than Overall/Authentic did.
 
 ---
 
@@ -342,28 +380,32 @@ Preference stats (`get-preference-stats`) are **computed live** on each request 
 | `tastyplates-mobile/hooks/useRestaurantScores.ts` | Detail screen orchestration |
 | `tastyplates-mobile/lib/cuisineTaxonomy.ts` | Trust set for Your Score |
 | `tastyplates-mobile/lib/sortByPalateMatch.ts` | Palate Sort comparator |
+| `functions/_lib/rebuildPalateRatingSummary.ts` | *(proposed)* Palate-identity precompute — see [precompute-ratings-v2.md](./precompute-ratings-v2.md) §11 |
 
 ---
 
 ## 14. FAQ (human English)
 
-**Q: Why do I see four numbers on one restaurant?**  
+**Q: Why do I see four numbers on one restaurant?**
 A: Each number asks a different question. Overall is everyone; Authentic is cuisine insiders; Your Score is people like you in a broader cultural neighborhood; Shared is people with your exact palate.
 
-**Q: Why is Shared Score locked?**  
-A: We need at least 3 reviews from matching palates so one person’s opinion doesn’t look like a community consensus.
+**Q: Why is Shared Score locked?**
+A: We need at least 3 reviews from matching palates so one person's opinion doesn't look like a community consensus.
 
-**Q: Why does Overall differ from Google Maps?**  
-A: Overall blends TastyPlates reviews with Google’s aggregate when the listing is linked. It is not a copy of Google’s number.
+**Q: Why does Overall differ from Google Maps?**
+A: Overall blends TastyPlates reviews with Google's aggregate when the listing is linked. It is not a copy of Google's number.
 
-**Q: Why is Smart Sort different from Highest Rated?**  
+**Q: Why is Smart Sort different from Highest Rated?**
 A: Highest Rated uses overall stars. Smart Sort uses Authentic score (smoothed) — better for finding great cuisine-specific spots even if they are not the most reviewed.
 
-**Q: What palates does the system use for me?**  
+**Q: What palates does the system use for me?**
 A: Your profile palates from onboarding / Edit Profile. Review snapshots are only a fallback when profile data is missing.
 
-**Q: Does leaving a review change all four scores?**  
+**Q: Does leaving a review change all four scores?**
 A: It always affects Overall (once approved). It affects Authentic if your palate matches the restaurant. It affects Search/Your/Shared if your palate matches the requested slug sets for those endpoints.
+
+**Q: Is there a way to see ratings by ethnic palate identity, not just cuisine tags?**
+A: Not yet — proposed in [precompute-ratings-v2.md](./precompute-ratings-v2.md), currently unimplemented.
 
 ---
 

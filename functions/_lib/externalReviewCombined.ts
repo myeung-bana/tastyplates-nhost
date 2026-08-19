@@ -34,6 +34,20 @@ const GET_FIRST_PARTY_PALATES = `
   }
 `
 
+const GET_EXTERNAL_AUTHOR_PALATES = `
+  query GetExternalAuthorPalates($restaurantUuid: uuid!) {
+    restaurant_external_reviews(
+      where: {
+        restaurant_uuid: { _eq: $restaurantUuid }
+        is_flagged: { _eq: false }
+      }
+    ) {
+      rating
+      author_palates
+    }
+  }
+`
+
 function mergeCountMaps(
   a: Record<string, number>,
   b: Record<string, number>,
@@ -97,6 +111,28 @@ function dominantLanguage(breakdown: Record<string, number>): string | null {
   return best
 }
 
+function buildAuthorPalateBreakdown(
+  reviews: Array<{ rating: number; author_palates: string[] | null }>,
+): Record<string, { count: number; avg: number }> {
+  const stats: Record<string, { sum: number; count: number }> = {}
+  for (const review of reviews) {
+    const rating = Number(review.rating)
+    if (!Number.isFinite(rating) || rating <= 0) continue
+    for (const slug of review.author_palates ?? []) {
+      const key = slug.trim().toLowerCase()
+      if (!key) continue
+      if (!stats[key]) stats[key] = { sum: 0, count: 0 }
+      stats[key].sum += rating
+      stats[key].count += 1
+    }
+  }
+  const out: Record<string, { count: number; avg: number }> = {}
+  for (const [key, value] of Object.entries(stats)) {
+    out[key] = { count: value.count, avg: Number((value.sum / value.count).toFixed(2)) }
+  }
+  return out
+}
+
 export interface CombinedSummaryResult {
   restaurant_id: string
   first_party: {
@@ -110,6 +146,7 @@ export interface CombinedSummaryResult {
     platform_breakdown: Record<string, { count: number; avg: number }>
     language_breakdown: Record<string, number>
     palate_breakdown: Record<string, number>
+    author_palate_breakdown: Record<string, { count: number; avg: number }>
     sentiment_breakdown: Record<string, number>
   }
   combined: {
@@ -145,7 +182,7 @@ export async function getCombinedSummary(restaurantUuid: string): Promise<Combin
   const restaurantId = resolved.data?.restaurants?.[0]?.id
   if (!restaurantId) throw new Error('Restaurant not found')
 
-  const [fpSummaryResult, fpPalatesResult, externalSummary] = await Promise.all([
+  const [fpSummaryResult, fpPalatesResult, externalSummary, externalAuthorPalates] = await Promise.all([
     hasuraQuery<{
       restaurant_rating_summary: Array<{
         overall_review_count: number
@@ -156,6 +193,9 @@ export async function getCombinedSummary(restaurantUuid: string): Promise<Combin
       restaurantUuid: uuid,
     }),
     getExternalReviewSummary(uuid),
+    hasuraQuery<{
+      restaurant_external_reviews: Array<{ rating: number; author_palates: string[] | null }>
+    }>(GET_EXTERNAL_AUTHOR_PALATES, { restaurantUuid: uuid }),
   ])
 
   const fpSummary = fpSummaryResult.data?.restaurant_rating_summary?.[0]
@@ -201,6 +241,9 @@ export async function getCombinedSummary(restaurantUuid: string): Promise<Combin
       platform_breakdown: external.platform_breakdown ?? {},
       language_breakdown: external.language_breakdown ?? {},
       palate_breakdown: external.palate_breakdown ?? {},
+      author_palate_breakdown: buildAuthorPalateBreakdown(
+        externalAuthorPalates.data?.restaurant_external_reviews ?? [],
+      ),
       sentiment_breakdown: external.sentiment_breakdown ?? {},
     },
     combined: {

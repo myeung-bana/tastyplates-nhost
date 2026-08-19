@@ -57,6 +57,7 @@ const LIST_EXTERNAL_REVIEWS = `
       body
       language
       palates
+      author_palates
       sentiment
       is_flagged
       flagged_reason
@@ -84,6 +85,7 @@ const GET_EXTERNAL_REVIEW_BY_ID = `
       body
       language
       palates
+      author_palates
       sentiment
       is_flagged
       flagged_reason

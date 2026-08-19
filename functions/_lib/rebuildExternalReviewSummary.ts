@@ -1,5 +1,6 @@
 import { hasuraAdmin, hasuraQuery } from './hasura'
 import type { ExternalReviewSummaryRow } from './externalReviewTypes'
+import { schedulePalateRatingSummaryRebuild } from './rebuildPalateRatingSummary'
 
 const GET_REVIEWS_FOR_SUMMARY = `
   query ExternalReviewsForSummary($restaurantUuid: uuid!) {
@@ -132,6 +133,8 @@ export async function rebuildExternalReviewSummary(restaurantUuid: string): Prom
       last_updated_at: new Date().toISOString(),
     },
   })
+
+  schedulePalateRatingSummaryRebuild(uuid, 'external')
 
   return true
 }

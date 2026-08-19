@@ -5,6 +5,7 @@ import {
 } from './googleRatingPrior'
 import { hasMatchingPalates, normalizePalates } from './palateUtils'
 import { buildAuthorProfileMap } from './review-enrichment'
+import { schedulePalateRatingSummaryRebuild } from './rebuildPalateRatingSummary'
 
 const GLOBAL_MEAN = 4.0
 const CONFIDENCE_M = 5
@@ -285,6 +286,8 @@ export async function rebuildRatingSummary(restaurantUuid: string): Promise<void
       console.warn('[rebuildRatingSummary] Cuisine summary upsert error (non-fatal):', error)
     }
   }
+
+  schedulePalateRatingSummaryRebuild(uuid, 'first_party')
 }
 
 /** Fire-and-forget rebuild — never throws to HTTP handlers. */

@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS public.restaurant_external_reviews (
 
   language            text,
   palates             text[]        NOT NULL DEFAULT '{}',
+  author_palates      text[]        NOT NULL DEFAULT '{}',
   sentiment           text          CHECK (sentiment IN ('positive', 'neutral', 'negative')),
 
   is_flagged          boolean       NOT NULL DEFAULT false,
@@ -49,6 +50,9 @@ CREATE INDEX IF NOT EXISTS idx_ext_reviews_language
 
 CREATE INDEX IF NOT EXISTS idx_ext_reviews_palates
   ON public.restaurant_external_reviews USING GIN (palates);
+
+CREATE INDEX IF NOT EXISTS idx_ext_reviews_author_palates
+  ON public.restaurant_external_reviews USING GIN (author_palates);
 
 CREATE INDEX IF NOT EXISTS idx_ext_reviews_ingested
   ON public.restaurant_external_reviews (ingested_at DESC);
