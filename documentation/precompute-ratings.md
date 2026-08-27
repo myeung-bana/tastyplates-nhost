@@ -2,7 +2,7 @@
 
 Design direction for ranking restaurants by **reviewer palate identity** — e.g. "restaurants that people with **Chinese palate** rate highly."
 
-**Status:** Proposed (not yet implemented)
+**Status:** Implemented for admin reads/rebuilds; mobile browse integration remains planned
 
 **Audience:** Product, backend engineers, mobile/web engineers
 
@@ -32,7 +32,12 @@ This is **reviewer-identity ranking**, distinct from restaurant taxonomy:
 
 ## 2. Palate taxonomy
 
-Reviewer palates use the same leaf slugs as `user_profiles.palates` and `restaurant_palates` (e.g. `chinese`, `korean`, `indian`). Users pick up to **2 leaf palates**.
+Reviewer palates use the same cuisine-identity leaf slugs as `user_profiles.palates` and
+`restaurant_cuisines` (e.g. `chinese`, `korean`, `indian`). This is the taxonomy managed by
+`/dashboard/admin/manage-cuisine`. Users pick up to **2 leaf identities**.
+
+`restaurant_palates` is a separate flavor/taste taxonomy (for example `sweet`, `spicy`, and
+`umami`) and must not be used for reviewer identity aggregation.
 
 Parent umbrella groups (pre-computed rollups):
 
@@ -47,12 +52,12 @@ Parent umbrella groups (pre-computed rollups):
 | South Asian | indian, pakistani, nepalese, … |
 | South East Asian | malaysian, filipino, singaporean, indonesian |
 
-Hierarchy is stored in `restaurant_palates`:
+Hierarchy is stored in `restaurant_cuisines`:
 
 - **Parent:** `parent_id IS NULL`
 - **Leaf:** `parent_id` points to a parent row
 
-Mobile/web reference: `palateOptions` / `GET /api/v1/palates/get-palates?leafOnly=true`
+Mobile/web reference: `palateOptions` / `GET /api/v1/cuisines/get-cuisines?leafOnly=true`
 
 ---
 
@@ -97,8 +102,8 @@ CREATE TABLE public.restaurant_palate_rating_summary (
   restaurant_id       bigint        NOT NULL
     REFERENCES public.restaurants (id) ON DELETE CASCADE,
 
-  palate_id           integer       NOT NULL
-    REFERENCES public.restaurant_palates (id) ON DELETE CASCADE,
+  cuisine_id          integer       NOT NULL
+    REFERENCES public.restaurant_cuisines (id) ON DELETE CASCADE,
 
   review_source       text          NOT NULL
     CHECK (review_source IN ('first_party', 'external')),
@@ -117,7 +122,7 @@ CREATE TABLE public.restaurant_palate_rating_summary (
   review_version       bigint        NOT NULL,
   updated_at           timestamptz   NOT NULL DEFAULT now(),
 
-  PRIMARY KEY (restaurant_id, palate_id, review_source)
+  PRIMARY KEY (restaurant_id, cuisine_id, review_source)
 );
 ```
 
@@ -125,7 +130,7 @@ CREATE TABLE public.restaurant_palate_rating_summary (
 
 ```sql
 CREATE INDEX idx_rprs_palate_rank
-  ON public.restaurant_palate_rating_summary (palate_id, review_source, rating_weighted DESC NULLS LAST)
+  ON public.restaurant_palate_rating_summary (cuisine_id, review_source, rating_weighted DESC NULLS LAST)
   WHERE review_count > 0;
 ```
 
@@ -137,7 +142,7 @@ CREATE INDEX idx_rprs_palate_rank
 
 ### Leaf vs parent rows
 
-Both are rows in `restaurant_palates`:
+Both are rows in `restaurant_cuisines`:
 
 - **Leaf** (`chinese`) — primary UX for "Chinese Palate" discovery.
 - **Parent** (`East Asian`) — browse broader region; fallback when leaf data is sparse.
@@ -157,7 +162,7 @@ Both are rows in `restaurant_palates`:
 CREATE VIEW public.restaurant_palate_rating_summary_combined AS
 SELECT
   restaurant_id,
-  palate_id,
+  cuisine_id,
   SUM(review_count)               AS review_count,
   SUM(rating_sum)                 AS rating_sum,
   ROUND(SUM(rating_sum) / NULLIF(SUM(review_count), 0), 2) AS rating_avg,
@@ -169,7 +174,7 @@ SELECT
                                                        -- sources is double-counted here, acceptable
                                                        -- for phase 1/2 display purposes
 FROM public.restaurant_palate_rating_summary
-GROUP BY restaurant_id, palate_id;
+GROUP BY restaurant_id, cuisine_id;
 ```
 
 Track this view in Hasura like any model. If Bayesian constants ever diverge between sources, this is the one place to change the formula.
@@ -180,12 +185,12 @@ Track this view in Hasura like any model. If Bayesian constants ever diverge bet
 CREATE VIEW public.restaurant_palate_rating_effective AS
 SELECT
   leaf_summary.restaurant_id,
-  leaf.id                          AS requested_palate_id,
+  leaf.id                          AS requested_cuisine_id,
   leaf.slug                        AS requested_palate_slug,
   COALESCE(
-    NULLIF(leaf_summary.palate_id, NULL) FILTER (WHERE leaf_summary.review_count >= 3),
-    parent_summary.palate_id
-  )                                 AS resolved_palate_id,
+    NULLIF(leaf_summary.cuisine_id, NULL) FILTER (WHERE leaf_summary.review_count >= 3),
+    parent_summary.cuisine_id
+  )                                 AS resolved_cuisine_id,
   CASE WHEN leaf_summary.review_count >= 3
        THEN leaf.slug ELSE parent.slug END                AS resolved_palate_slug,
   CASE WHEN leaf_summary.review_count >= 3
@@ -198,28 +203,30 @@ SELECT
     leaf_summary.review_count FILTER (WHERE leaf_summary.review_count >= 3),
     parent_summary.review_count
   )                                 AS review_count
-FROM public.restaurant_palates leaf
-JOIN public.restaurant_palates parent ON leaf.parent_id = parent.id
+FROM public.restaurant_cuisines leaf
+JOIN public.restaurant_cuisines parent ON leaf.parent_id = parent.id
 LEFT JOIN public.restaurant_palate_rating_summary_combined leaf_summary
-  ON leaf_summary.palate_id = leaf.id
+  ON leaf_summary.cuisine_id = leaf.id
 LEFT JOIN public.restaurant_palate_rating_summary_combined parent_summary
-  ON parent_summary.palate_id = parent.id AND parent_summary.restaurant_id = leaf_summary.restaurant_id
+  ON parent_summary.cuisine_id = parent.id AND parent_summary.restaurant_id = leaf_summary.restaurant_id
 WHERE leaf.parent_id IS NOT NULL;
 ```
 
-(Sketch — finalize exact join shape against real `restaurant_palates` cardinality before migration. The `3`-review threshold should read from the same config as §4/§9's minimum-review decision, not be hardcoded twice.)
+(Sketch — the applied migration uses `restaurant_cuisines` and cross-joins restaurants so parent
+fallback also works when a leaf has no row. The `3`-review threshold must stay aligned with the
+server constant.)
 
 ### Helper view (leaf/parent lookup)
 
 ```sql
-CREATE VIEW public.palate_leaf_to_parent AS
+CREATE VIEW public.cuisine_leaf_to_parent AS
 SELECT
-  leaf.id   AS leaf_palate_id,
+  leaf.id   AS leaf_cuisine_id,
   leaf.slug AS leaf_slug,
-  parent.id AS parent_palate_id,
+  parent.id AS parent_cuisine_id,
   parent.slug AS parent_slug
-FROM public.restaurant_palates leaf
-JOIN public.restaurant_palates parent ON leaf.parent_id = parent.id;
+FROM public.restaurant_cuisines leaf
+JOIN public.restaurant_cuisines parent ON leaf.parent_id = parent.id;
 ```
 
 ---
@@ -235,7 +242,7 @@ For each restaurant:
       → increment parent bucket once per distinct parent of P1/P2
       → track DISTINCT author_identifier per bucket for reviewer_count
     Compute rating_avg, rating_weighted (Bayesian, m=5, global=4.0)
-    Upsert rows for (restaurant_id, palate_id, review_source)
+    Upsert rows for (restaurant_id, cuisine_id, review_source)
   # No separate "merge into combined" step — combined is the view in §4b,
   # computed on read from the two upserted rows above.
 ```
@@ -284,7 +291,7 @@ ORDER BY e.rating_weighted DESC, e.review_count DESC;
 
 ### Parent browse ("East Asian")
 
-Query `restaurant_palate_rating_summary_combined` directly by parent `palate_id` — no fallback needed, parent rows are the terminal case.
+Query `restaurant_palate_rating_summary_combined` directly by parent `cuisine_id` — no fallback needed, parent rows are the terminal case.
 
 ### One-restaurant lookup (detail screen)
 
@@ -427,7 +434,7 @@ All rebuilds are triggered **synchronously in-process**, from inside the HTTP ha
 
 ## 15. Next implementation steps
 
-1. Finalize the exact join shape of `restaurant_palate_rating_effective` (§4b) against real `restaurant_palates` cardinality; add SQL migration under `documentation/migrations/` (table + indexes + both views).
+1. Apply the cuisine-taxonomy correction migration and rebuild all derived rows.
 2. Track table and views in Hasura; permissions: public/user **select** on aggregate columns only.
 3. Implement `rebuildPalateRatingSummary` + `schedulePalateRatingSummaryRebuild*` in `functions/_lib/` (§11); wire into the four handlers listed there.
 4. Implement `get-palate-rating-summary.ts` and extend `get-restaurants.ts` with `order_by=palate` (§12).

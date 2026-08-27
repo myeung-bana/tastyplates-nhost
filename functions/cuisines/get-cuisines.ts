@@ -18,6 +18,7 @@ export default async (req: Request, res: Response): Promise<void> => {
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50'), 1000)
     const offset = parseInt(url.searchParams.get('offset') ?? '0')
     const parentOnly = url.searchParams.get('parentOnly') === 'true'
+    const leafOnly = url.searchParams.get('leafOnly') === 'true'
     const parentIdParam = url.searchParams.get('parentId')
 
     if (isNaN(limit) || isNaN(offset)) {
@@ -28,6 +29,8 @@ export default async (req: Request, res: Response): Promise<void> => {
 
     if (parentOnly) {
       conditions.push({ parent_id: { _is_null: true } })
+    } else if (leafOnly) {
+      conditions.push({ parent_id: { _is_null: false } })
     } else if (parentIdParam === 'null') {
       conditions.push({ parent_id: { _is_null: true } })
     } else if (parentIdParam !== null) {

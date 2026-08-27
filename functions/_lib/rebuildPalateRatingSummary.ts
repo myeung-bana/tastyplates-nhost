@@ -6,7 +6,7 @@ export const PALATE_RATING_MIN_LEAF_REVIEWS = 3
 
 export type PalateRatingSource = 'external' | 'first_party'
 
-type PalateRow = {
+type CuisineRow = {
   id: number
   slug: string
   name: string
@@ -19,9 +19,9 @@ type Bucket = {
   reviewers: Set<string>
 }
 
-const GET_ALL_PALATES = `
-  query GetAllPalatesForRebuild {
-    restaurant_palates(order_by: { id: asc }) {
+const GET_ALL_CUISINES = `
+  query GetAllCuisinesForPalateRatingRebuild {
+    restaurant_cuisines(order_by: { id: asc }) {
       id slug name parent_id
     }
   }
@@ -145,10 +145,10 @@ function extractPalateSlugs(raw: unknown): string[] {
   return []
 }
 
-function buildPalateMaps(rows: PalateRow[]) {
-  const bySlug = new Map<string, PalateRow>()
-  const leafById = new Map<number, PalateRow>()
-  const parentById = new Map<number, PalateRow>()
+function buildCuisineMaps(rows: CuisineRow[]) {
+  const bySlug = new Map<string, CuisineRow>()
+  const leafById = new Map<number, CuisineRow>()
+  const parentById = new Map<number, CuisineRow>()
 
   for (const row of rows) {
     const normalized = { ...row, slug: normalizeSlug(row.slug) }
@@ -165,15 +165,15 @@ function buildPalateMaps(rows: PalateRow[]) {
 
 function addToBucket(
   buckets: Map<number, Bucket>,
-  palateId: number,
+  cuisineId: number,
   rating: number,
   reviewerKey: string,
 ) {
-  const bucket = buckets.get(palateId) ?? { sum: 0, count: 0, reviewers: new Set<string>() }
+  const bucket = buckets.get(cuisineId) ?? { sum: 0, count: 0, reviewers: new Set<string>() }
   bucket.sum += rating
   bucket.count += 1
   if (reviewerKey) bucket.reviewers.add(reviewerKey)
-  buckets.set(palateId, bucket)
+  buckets.set(cuisineId, bucket)
 }
 
 function attributeReviewToBuckets(
@@ -181,7 +181,7 @@ function attributeReviewToBuckets(
   leafSlugs: string[],
   rating: number,
   reviewerKey: string,
-  bySlug: Map<string, PalateRow>,
+  bySlug: Map<string, CuisineRow>,
 ) {
   const leafIds = new Set<number>()
   const parentIds = new Set<number>()
@@ -238,20 +238,20 @@ export async function rebuildPalateRatingSummary(
   const uuid = restaurantUuid.trim()
   if (!uuid) return { rows_upserted: 0 }
 
-  const [restaurantId, palateResult] = await Promise.all([
+  const [restaurantId, cuisineResult] = await Promise.all([
     resolveRestaurantId(uuid),
-    hasuraQuery<{ restaurant_palates: PalateRow[] }>(GET_ALL_PALATES),
+    hasuraQuery<{ restaurant_cuisines: CuisineRow[] }>(GET_ALL_CUISINES),
   ])
 
   if (!restaurantId) {
     console.warn('[rebuildPalateRatingSummary] Restaurant not found:', uuid)
     return { rows_upserted: 0 }
   }
-  if (palateResult.errors?.length) {
-    throw new Error(palateResult.errors.map((e) => e.message).join(', '))
+  if (cuisineResult.errors?.length) {
+    throw new Error(cuisineResult.errors.map((e) => e.message).join(', '))
   }
 
-  const { bySlug } = buildPalateMaps(palateResult.data?.restaurant_palates ?? [])
+  const { bySlug } = buildCuisineMaps(cuisineResult.data?.restaurant_cuisines ?? [])
   const buckets = new Map<number, Bucket>()
 
   if (source === 'external') {
@@ -322,11 +322,11 @@ export async function rebuildPalateRatingSummary(
 
   const versionTs = Math.floor(Date.now() / 1000)
   const now = new Date().toISOString()
-  const objects = [...buckets.entries()].map(([palateId, bucket]) => {
+  const objects = [...buckets.entries()].map(([cuisineId, bucket]) => {
     const avg = bucket.sum / bucket.count
     return {
       restaurant_id: restaurantId,
-      palate_id: palateId,
+      cuisine_id: cuisineId,
       review_source: source,
       review_count: bucket.count,
       rating_sum: Number(bucket.sum.toFixed(4)),

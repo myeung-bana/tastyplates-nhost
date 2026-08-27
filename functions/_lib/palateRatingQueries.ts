@@ -1,14 +1,15 @@
 import { hasuraQuery } from './hasura'
 import { aggregatePreferenceStatsByPalates } from './preference-stats-aggregate'
+
 import {
   PALATE_RATING_MIN_LEAF_REVIEWS,
   type PalateRatingSource,
 } from './rebuildPalateRatingSummary'
 
 export type PalateRatingRow = {
-  palate_id: number
-  palate_slug: string
-  palate_name: string
+  cuisine_id: number
+  cuisine_slug: string
+  cuisine_name: string
   parent_id: number | null
   parent_slug: string | null
   parent_name: string | null
@@ -19,12 +20,34 @@ export type PalateRatingRow = {
   rating_avg: number | null
   rating_weighted: number | null
   reviewer_count: number
+  has_data: boolean
   updated_at: string | null
 }
 
-const GET_PALATES = `
-  query GetPalatesForRatingRead {
-    restaurant_palates(order_by: [{ parent_id: asc_nulls_first }, { name: asc }]) {
+export type PalateRatingGroup = {
+  parent: PalateRatingRow
+  leaves: PalateRatingRow[]
+}
+
+type CuisineRecord = {
+  id: number
+  slug: string
+  name: string
+  parent_id: number | null
+}
+
+type StoredMetrics = {
+  review_count: number
+  rating_sum: number | null
+  rating_avg: number | null
+  rating_weighted: number | null
+  reviewer_count: number
+  updated_at?: string | null
+}
+
+const GET_CUISINES = `
+  query GetCuisinesForPalateRatingRead {
+    restaurant_cuisines(order_by: [{ parent_id: asc_nulls_first }, { name: asc }]) {
       id slug name parent_id
     }
   }
@@ -34,9 +57,9 @@ const GET_SUMMARY_ROWS = `
   query GetPalateSummaryRows($restaurantId: Int!) {
     restaurant_palate_rating_summary(
       where: { restaurant_id: { _eq: $restaurantId } }
-      order_by: [{ palate_id: asc }, { review_source: asc }]
+      order_by: [{ cuisine_id: asc }, { review_source: asc }]
     ) {
-      palate_id review_source review_count rating_sum rating_avg rating_weighted reviewer_count updated_at
+      cuisine_id review_source review_count rating_sum rating_avg rating_weighted reviewer_count updated_at
     }
   }
 `
@@ -45,15 +68,137 @@ const GET_COMBINED_ROWS = `
   query GetPalateCombinedRows($restaurantId: Int!) {
     restaurant_palate_rating_summary_combined(
       where: { restaurant_id: { _eq: $restaurantId } }
-      order_by: { palate_id: asc }
+      order_by: { cuisine_id: asc }
     ) {
-      palate_id review_count rating_sum rating_avg rating_weighted reviewer_count
+      cuisine_id review_count rating_sum rating_avg rating_weighted reviewer_count
     }
   }
 `
 
 function normalizeSlug(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, '-').replace(/_/g, '-')
+}
+
+const EMPTY_METRICS: StoredMetrics = {
+  review_count: 0,
+  rating_sum: null,
+  rating_avg: null,
+  rating_weighted: null,
+  reviewer_count: 0,
+  updated_at: null,
+}
+
+function buildCuisineRow(
+  cuisine: CuisineRecord,
+  parentById: Map<number, CuisineRecord>,
+  source: PalateRatingSource | 'combined',
+  metrics: StoredMetrics,
+): PalateRatingRow {
+  const parent = cuisine.parent_id != null ? parentById.get(cuisine.parent_id) : null
+  const hasData = metrics.review_count > 0
+
+  return {
+    cuisine_id: cuisine.id,
+    cuisine_slug: normalizeSlug(cuisine.slug),
+    cuisine_name: cuisine.name,
+    parent_id: cuisine.parent_id,
+    parent_slug: parent ? normalizeSlug(parent.slug) : null,
+    parent_name: parent?.name ?? null,
+    is_parent: cuisine.parent_id == null,
+    review_source: source,
+    review_count: metrics.review_count,
+    rating_sum: hasData ? metrics.rating_sum : null,
+    rating_avg: hasData ? metrics.rating_avg : null,
+    rating_weighted: hasData ? metrics.rating_weighted : null,
+    reviewer_count: metrics.reviewer_count,
+    has_data: hasData,
+    updated_at: metrics.updated_at ?? null,
+  }
+}
+
+function buildMetricsMaps(
+  summaryRows: Array<{
+    cuisine_id: number
+    review_source: PalateRatingSource
+    review_count: number
+    rating_sum: number
+    rating_avg: number | null
+    rating_weighted: number | null
+    reviewer_count: number
+    updated_at: string
+  }>,
+  combinedRows: Array<{
+    cuisine_id: number
+    review_count: number
+    rating_sum: number
+    rating_avg: number | null
+    rating_weighted: number | null
+    reviewer_count: number
+  }>,
+) {
+  const external = new Map<number, StoredMetrics>()
+  const firstParty = new Map<number, StoredMetrics>()
+  const combined = new Map<number, StoredMetrics>()
+
+  for (const row of summaryRows) {
+    const metrics: StoredMetrics = {
+      review_count: row.review_count,
+      rating_sum: row.rating_sum,
+      rating_avg: row.rating_avg,
+      rating_weighted: row.rating_weighted,
+      reviewer_count: row.reviewer_count,
+      updated_at: row.updated_at,
+    }
+    if (row.review_source === 'external') external.set(row.cuisine_id, metrics)
+    if (row.review_source === 'first_party') firstParty.set(row.cuisine_id, metrics)
+  }
+
+  for (const row of combinedRows) {
+    combined.set(row.cuisine_id, {
+      review_count: row.review_count,
+      rating_sum: row.rating_sum,
+      rating_avg: row.rating_avg,
+      rating_weighted: row.rating_weighted,
+      reviewer_count: row.reviewer_count,
+    })
+  }
+
+  return { external, first_party: firstParty, combined }
+}
+
+function densifySourceGrid(
+  cuisines: CuisineRecord[],
+  parentById: Map<number, CuisineRecord>,
+  source: PalateRatingSource | 'combined',
+  metricsByCuisineId: Map<number, StoredMetrics>,
+): PalateRatingRow[] {
+  return cuisines.map((cuisine) =>
+    buildCuisineRow(
+      cuisine,
+      parentById,
+      source,
+      metricsByCuisineId.get(cuisine.id) ?? EMPTY_METRICS,
+    ),
+  )
+}
+
+function buildGroups(rows: PalateRatingRow[]): PalateRatingGroup[] {
+  const parentRows = rows.filter((row) => row.is_parent)
+  const leavesByParentId = new Map<number, PalateRatingRow[]>()
+
+  for (const row of rows) {
+    if (row.is_parent || row.parent_id == null) continue
+    const list = leavesByParentId.get(row.parent_id) ?? []
+    list.push(row)
+    leavesByParentId.set(row.parent_id, list)
+  }
+
+  return parentRows.map((parent) => ({
+    parent,
+    leaves: (leavesByParentId.get(parent.cuisine_id) ?? []).sort((a, b) =>
+      a.cuisine_name.localeCompare(b.cuisine_name),
+    ),
+  }))
 }
 
 export async function getRestaurantPalateRatings(
@@ -73,18 +218,11 @@ export async function getRestaurantPalateRatings(
   const restaurantId = resolved.data?.restaurants?.[0]?.id
   if (!restaurantId) throw new Error('Restaurant not found')
 
-  const [palatesResult, summaryResult, combinedResult] = await Promise.all([
-    hasuraQuery<{
-      restaurant_palates: Array<{
-        id: number
-        slug: string
-        name: string
-        parent_id: number | null
-      }>
-    }>(GET_PALATES),
+  const [cuisinesResult, summaryResult, combinedResult] = await Promise.all([
+    hasuraQuery<{ restaurant_cuisines: CuisineRecord[] }>(GET_CUISINES),
     hasuraQuery<{
       restaurant_palate_rating_summary: Array<{
-        palate_id: number
+        cuisine_id: number
         review_source: PalateRatingSource
         review_count: number
         rating_sum: number
@@ -96,7 +234,7 @@ export async function getRestaurantPalateRatings(
     }>(GET_SUMMARY_ROWS, { restaurantId }),
     hasuraQuery<{
       restaurant_palate_rating_summary_combined: Array<{
-        palate_id: number
+        cuisine_id: number
         review_count: number
         rating_sum: number
         rating_avg: number | null
@@ -106,8 +244,8 @@ export async function getRestaurantPalateRatings(
     }>(GET_COMBINED_ROWS, { restaurantId }),
   ])
 
-  if (palatesResult.errors?.length) {
-    throw new Error(palatesResult.errors.map((e) => e.message).join(', '))
+  if (cuisinesResult.errors?.length) {
+    throw new Error(cuisinesResult.errors.map((e) => e.message).join(', '))
   }
   if (summaryResult.errors?.length) {
     throw new Error(summaryResult.errors.map((e) => e.message).join(', '))
@@ -116,100 +254,29 @@ export async function getRestaurantPalateRatings(
     throw new Error(combinedResult.errors.map((e) => e.message).join(', '))
   }
 
-  const palates = palatesResult.data?.restaurant_palates ?? []
-  const palateById = new Map(palates.map((p) => [p.id, p]))
+  const cuisines = cuisinesResult.data?.restaurant_cuisines ?? []
   const parentById = new Map(
-    palates.filter((p) => p.parent_id == null).map((p) => [p.id, p]),
+    cuisines.filter((cuisine) => cuisine.parent_id == null).map((cuisine) => [cuisine.id, cuisine]),
   )
-  const combinedMap = new Map(
-    (combinedResult.data?.restaurant_palate_rating_summary_combined ?? []).map((row) => [
-      row.palate_id,
-      row,
-    ]),
+  const metricsMaps = buildMetricsMaps(
+    summaryResult.data?.restaurant_palate_rating_summary ?? [],
+    combinedResult.data?.restaurant_palate_rating_summary_combined ?? [],
   )
 
-  const toRow = (
-    palate: (typeof palates)[number],
-    source: PalateRatingSource | 'combined',
-    metrics: {
-      review_count: number
-      rating_sum?: number | null
-      rating_avg: number | null
-      rating_weighted: number | null
-      reviewer_count: number
-      updated_at?: string | null
-    },
-  ): PalateRatingRow => {
-    const parent = palate.parent_id != null ? parentById.get(palate.parent_id) : null
-    return {
-      palate_id: palate.id,
-      palate_slug: normalizeSlug(palate.slug),
-      palate_name: palate.name,
-      parent_id: palate.parent_id,
-      parent_slug: parent ? normalizeSlug(parent.slug) : null,
-      parent_name: parent?.name ?? null,
-      is_parent: palate.parent_id == null,
-      review_source: source,
-      review_count: metrics.review_count,
-      rating_sum: metrics.rating_sum ?? null,
-      rating_avg: metrics.rating_avg,
-      rating_weighted: metrics.rating_weighted,
-      reviewer_count: metrics.reviewer_count,
-      updated_at: metrics.updated_at ?? null,
-    }
+  const sources = {
+    external: densifySourceGrid(cuisines, parentById, 'external', metricsMaps.external),
+    first_party: densifySourceGrid(cuisines, parentById, 'first_party', metricsMaps.first_party),
+    combined: densifySourceGrid(cuisines, parentById, 'combined', metricsMaps.combined),
   }
 
-  const grouped: Record<string, PalateRatingRow[]> = {
-    external: [],
-    first_party: [],
-    combined: [],
+  const groups = {
+    external: buildGroups(sources.external),
+    first_party: buildGroups(sources.first_party),
+    combined: buildGroups(sources.combined),
   }
 
-  for (const summary of summaryResult.data?.restaurant_palate_rating_summary ?? []) {
-    const palate = palateById.get(summary.palate_id)
-    if (!palate) continue
-    grouped[summary.review_source].push(
-      toRow(palate, summary.review_source, {
-        review_count: summary.review_count,
-        rating_sum: summary.rating_sum,
-        rating_avg: summary.rating_avg,
-        rating_weighted: summary.rating_weighted,
-        reviewer_count: summary.reviewer_count,
-        updated_at: summary.updated_at,
-      }),
-    )
-  }
-
-  for (const [palateId, combined] of combinedMap.entries()) {
-    const palate = palateById.get(palateId)
-    if (!palate || combined.review_count <= 0) continue
-    grouped.combined.push(
-      toRow(palate, 'combined', {
-        review_count: combined.review_count,
-        rating_sum: combined.rating_sum,
-        rating_avg: combined.rating_avg,
-        rating_weighted: combined.rating_weighted,
-        reviewer_count: combined.reviewer_count,
-      }),
-    )
-  }
-
-  const sortRows = (rows: PalateRatingRow[]) =>
-    rows.sort((a, b) => {
-      if (a.is_parent !== b.is_parent) return a.is_parent ? -1 : 1
-      return a.palate_name.localeCompare(b.palate_name)
-    })
-
-  const parents = palates
-    .filter((p) => p.parent_id == null)
-    .map((p) => ({
-      palate_id: p.id,
-      palate_slug: normalizeSlug(p.slug),
-      palate_name: p.name,
-    }))
-
-  const filterRows = (key: keyof typeof grouped) => {
-    if (sourceFilter === 'all' || sourceFilter === key) return sortRows(grouped[key])
+  const filterSource = <T,>(key: keyof typeof sources, value: T): T | [] => {
+    if (sourceFilter === 'all' || sourceFilter === key) return value
     return []
   }
 
@@ -217,13 +284,23 @@ export async function getRestaurantPalateRatings(
     restaurant_uuid: uuid,
     restaurant_id: restaurantId,
     sources: {
-      external: filterRows('external'),
-      first_party: filterRows('first_party'),
-      combined: filterRows('combined'),
+      external: filterSource('external', sources.external),
+      first_party: filterSource('first_party', sources.first_party),
+      combined: filterSource('combined', sources.combined),
     },
-    parents,
+    groups: {
+      external: filterSource('external', groups.external),
+      first_party: filterSource('first_party', groups.first_party),
+      combined: filterSource('combined', groups.combined),
+    },
     meta: {
       min_leaf_review_count: PALATE_RATING_MIN_LEAF_REVIEWS,
+      total_cuisines: cuisines.length,
+      populated_counts: {
+        external: sources.external.filter((row) => row.has_data).length,
+        first_party: sources.first_party.filter((row) => row.has_data).length,
+        combined: sources.combined.filter((row) => row.has_data).length,
+      },
     },
   }
 }
@@ -231,28 +308,25 @@ export async function getRestaurantPalateRatings(
 export async function getPalateRatingSummary(restaurantUuid: string, palateSlug: string) {
   const slug = normalizeSlug(palateSlug)
   const data = await getRestaurantPalateRatings(restaurantUuid, 'combined')
-  const palatesResult = await hasuraQuery<{
-    restaurant_palates: Array<{
-      id: number
-      slug: string
-      name: string
-      parent_id: number | null
-    }>
-  }>(GET_PALATES)
+  const cuisinesResult = await hasuraQuery<{ restaurant_cuisines: CuisineRecord[] }>(GET_CUISINES)
+  if (cuisinesResult.errors?.length) {
+    throw new Error(cuisinesResult.errors.map((e) => e.message).join(', '))
+  }
+  const cuisines = cuisinesResult.data?.restaurant_cuisines ?? []
+  const leaf = cuisines.find(
+    (cuisine) => normalizeSlug(cuisine.slug) === slug && cuisine.parent_id != null,
+  )
+  if (!leaf) throw new Error(`Unknown reviewer cuisine slug: ${palateSlug}`)
 
-  const palates = palatesResult.data?.restaurant_palates ?? []
-  const leaf = palates.find((p) => normalizeSlug(p.slug) === slug && p.parent_id != null)
-  if (!leaf) throw new Error(`Unknown leaf palate slug: ${palateSlug}`)
-
-  const parent = palates.find((p) => p.id === leaf.parent_id)
+  const parent = cuisines.find((cuisine) => cuisine.id === leaf.parent_id)
   const combinedRows = data.sources.combined
-  const leafRow = combinedRows.find((row) => row.palate_id === leaf.id)
+  const leafRow = combinedRows.find((row) => row.cuisine_id === leaf.id)
   const parentRow = parent
-    ? combinedRows.find((row) => row.palate_id === parent.id)
+    ? combinedRows.find((row) => row.cuisine_id === parent.id)
     : undefined
 
-  const useLeaf = (leafRow?.review_count ?? 0) >= PALATE_RATING_MIN_LEAF_REVIEWS
-  const resolved = useLeaf ? leafRow : parentRow
+  const useLeaf = (leafRow?.review_count ?? 0) >= PALATE_RATING_MIN_LEAF_REVIEWS && leafRow?.has_data
+  const resolved = useLeaf ? leafRow : parentRow?.has_data ? parentRow : undefined
 
   return {
     restaurant_uuid: data.restaurant_uuid,

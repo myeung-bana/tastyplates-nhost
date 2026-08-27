@@ -1,18 +1,18 @@
--- Precomputed reviewer-palate rating aggregates per restaurant.
+-- Correct an earlier palate-rating migration that referenced the flavor/taste
+-- taxonomy (`restaurant_palates`). Reviewer ethnic identity is sourced from
+-- `restaurant_cuisines`, the taxonomy managed by /dashboard/admin/manage-cuisine.
 --
--- How to apply:
---   1. Run after add_restaurant_external_reviews.sql (author_palates column)
---   2. Hasura Console → track `restaurant_palate_rating_summary`
---   3. Track views: cuisine_leaf_to_parent, restaurant_palate_rating_summary_combined,
---      restaurant_palate_rating_effective
---   4. Permissions: public/user select on aggregate columns only
---
--- For new installs. If the old palate_id/restaurant_palates version already
--- exists, run fix_palate_rating_summary_cuisine_taxonomy.sql instead.
+-- Summary data is derived, so it is intentionally discarded and rebuilt.
 
 BEGIN;
 
-CREATE TABLE IF NOT EXISTS public.restaurant_palate_rating_summary (
+DROP VIEW IF EXISTS public.restaurant_palate_rating_effective;
+DROP VIEW IF EXISTS public.restaurant_palate_rating_summary_combined;
+DROP VIEW IF EXISTS public.palate_leaf_to_parent;
+DROP VIEW IF EXISTS public.cuisine_leaf_to_parent;
+DROP TABLE IF EXISTS public.restaurant_palate_rating_summary;
+
+CREATE TABLE public.restaurant_palate_rating_summary (
   restaurant_id     integer       NOT NULL
     REFERENCES public.restaurants (id) ON DELETE CASCADE,
 
@@ -26,14 +26,11 @@ CREATE TABLE IF NOT EXISTS public.restaurant_palate_rating_summary (
   rating_sum        numeric(12,4) NOT NULL DEFAULT 0,
   rating_avg        numeric(4,2),
   rating_weighted   numeric(6,4),
-
   reviewer_count    integer       NOT NULL DEFAULT 0,
-
   review_version    bigint        NOT NULL DEFAULT 0,
   updated_at        timestamptz   NOT NULL DEFAULT now(),
 
   PRIMARY KEY (restaurant_id, cuisine_id, review_source),
-
   CONSTRAINT rprs_review_count_nonnegative CHECK (review_count >= 0),
   CONSTRAINT rprs_rating_sum_nonnegative CHECK (rating_sum >= 0),
   CONSTRAINT rprs_reviewer_count_nonnegative CHECK (reviewer_count >= 0)
@@ -42,17 +39,21 @@ CREATE TABLE IF NOT EXISTS public.restaurant_palate_rating_summary (
 COMMENT ON TABLE public.restaurant_palate_rating_summary IS
   'Precomputed ratings grouped by reviewer cuisine identity. Combined source is derived via view.';
 
-CREATE INDEX IF NOT EXISTS idx_rprs_cuisine_rank
-  ON public.restaurant_palate_rating_summary (cuisine_id, review_source, rating_weighted DESC NULLS LAST)
+CREATE INDEX idx_rprs_cuisine_rank
+  ON public.restaurant_palate_rating_summary (
+    cuisine_id,
+    review_source,
+    rating_weighted DESC NULLS LAST
+  )
   WHERE review_count > 0;
 
-CREATE INDEX IF NOT EXISTS idx_rprs_restaurant
+CREATE INDEX idx_rprs_restaurant
   ON public.restaurant_palate_rating_summary (restaurant_id, review_source);
 
-CREATE INDEX IF NOT EXISTS idx_rprs_updated
+CREATE INDEX idx_rprs_updated
   ON public.restaurant_palate_rating_summary (updated_at DESC);
 
-CREATE OR REPLACE VIEW public.cuisine_leaf_to_parent AS
+CREATE VIEW public.cuisine_leaf_to_parent AS
 SELECT
   leaf.id          AS leaf_cuisine_id,
   leaf.slug        AS leaf_slug,
@@ -63,7 +64,7 @@ SELECT
 FROM public.restaurant_cuisines leaf
 JOIN public.restaurant_cuisines parent ON leaf.parent_id = parent.id;
 
-CREATE OR REPLACE VIEW public.restaurant_palate_rating_summary_combined AS
+CREATE VIEW public.restaurant_palate_rating_summary_combined AS
 SELECT
   restaurant_id,
   cuisine_id,
@@ -78,7 +79,7 @@ SELECT
 FROM public.restaurant_palate_rating_summary
 GROUP BY restaurant_id, cuisine_id;
 
-CREATE OR REPLACE VIEW public.restaurant_palate_rating_effective AS
+CREATE VIEW public.restaurant_palate_rating_effective AS
 SELECT
   r.id AS restaurant_id,
   leaf.id   AS requested_cuisine_id,
