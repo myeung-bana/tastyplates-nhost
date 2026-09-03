@@ -1,18 +1,15 @@
 -- Bulk external review curation: versioning, audit batches, atomic apply.
 --
--- Promoted to nhost/migrations/default/1788480000000_add_external_review_bulk_edit/.
--- This copy stays for manual runs in the Nhost SQL editor.
+-- Mirrors documentation/migrations/add_external_review_bulk_edit.sql without the explicit
+-- BEGIN/COMMIT, because Hasura wraps each migration in its own transaction.
 --
--- How to apply:
---   1. Run in Nhost SQL editor after add_restaurant_external_reviews.sql
---   2. Hasura Console → track tables (before the function, which returns SETOF the first):
---        external_review_edit_batches
---        external_review_edit_batch_items
---   3. Track function: apply_external_review_edit_batch (exposed as a mutation)
+-- Idempotent: safe to apply on a database where the SQL was already run by hand.
 --
--- Safe to re-run (IF NOT EXISTS / DROP ... IF EXISTS / OR REPLACE).
-
-BEGIN;
+-- After apply, track in Hasura (Console or metadata):
+--   1. external_review_edit_batches
+--   2. external_review_edit_batch_items
+--   3. apply_external_review_edit_batch  (function, exposed as a mutation)
+-- The tables must be tracked before the function, which returns SETOF the first.
 
 ALTER TABLE public.restaurant_external_reviews
   ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now(),
@@ -207,5 +204,3 @@ EXCEPTION
     RAISE;
 END;
 $$;
-
-COMMIT;
