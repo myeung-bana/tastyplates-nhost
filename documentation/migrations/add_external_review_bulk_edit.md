@@ -17,6 +17,12 @@ field 'apply_external_review_edit_batch' not found in type: 'mutation_root'
 The function now returns `SETOF public.external_review_edit_batches`. The migration drops the old
 signature first, because Postgres rejects a return-type change via `CREATE OR REPLACE`.
 
+## Git deploy
+
+`nhost/migrations/default/1788480000000_add_external_review_bulk_edit/` applies the DDL on deploy.
+`config.yaml` does **not** point at `nhost/metadata/` (metadata is Console-managed). After a successful
+deploy, complete the Hasura steps below in the Console — migrations alone do not track tables or functions.
+
 ## Hasura
 
 Track in this order — the function returns `SETOF external_review_edit_batches`, so that table must

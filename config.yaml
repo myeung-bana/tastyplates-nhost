@@ -1,5 +1,8 @@
-# Hasura CLI project root — required for Nhost Git deploy (metadata apply step).
+# Hasura CLI project root — required for Nhost Git deploy (migrations step).
+# Hasura metadata is maintained in the Nhost/Hasura Console, not in this repo.
+# Do NOT set metadata_directory unless nhost/metadata/ contains a full exported
+# metadata tree — an empty or partial folder fails deploy with "key tables not found"
+# and can overwrite production tracking if applied.
 # Do not commit secrets. Cloud deploy injects endpoint and admin secret.
 version: 3
-metadata_directory: nhost/metadata
 migrations_directory: nhost/migrations

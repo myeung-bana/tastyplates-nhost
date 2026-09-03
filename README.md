@@ -4,10 +4,10 @@ Nhost-linked repository for Tastyplates: **Hasura / Auth / Postgres configuratio
 
 | Path | Contents |
 |------|----------|
-| `config.yaml` | Hasura CLI root (required for Nhost deploy metadata step) |
+| `config.yaml` | Hasura CLI root (Git deploy: SQL migrations only) |
 | `nhost/nhost.toml` | Hasura, Auth, Postgres, Observability |
-| `nhost/metadata/` | Hasura permissions and relationships |
-| `nhost/migrations/` | SQL migrations (`default/` may be empty for metadata-only deploys) |
+| `nhost/migrations/` | SQL migrations applied on deploy |
+| Hasura Console | Metadata (tracked tables, relationships, permissions) — not in git |
 | `nhost/emails/` | Auth email templates (verify, reset, OTP, etc.) |
 | `functions/` | Deployable Nhost Functions and shared helpers |
 | `documentation/` | Architecture and migration runbooks |
@@ -36,7 +36,7 @@ This starts Postgres, Hasura, Auth, Functions, and related services defined in `
 4. In Google Cloud Console, set the OAuth redirect URI to  
    `https://ygmkmxorcapgpimwerpc.auth.ap-southeast-1.nhost.run/v1/signin/provider/google/callback`
 5. Validate before deploy: `nhost config validate` (from this repo root; uses linked project secrets when logged in).
-6. Each push to the connected branch triggers a deployment (**migrations**, **metadata**, **functions**, and `nhost.toml`).
+6. Each push to the connected branch triggers a deployment (**migrations**, **functions**, and `nhost.toml`). Hasura metadata changes are applied in the Console, not via git (unless you later commit a full `nhost/metadata/` export).
 
 ### Hasura metadata (required for review feeds)
 
