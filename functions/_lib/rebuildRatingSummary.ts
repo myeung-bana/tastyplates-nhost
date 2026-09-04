@@ -31,6 +31,20 @@ const GET_REVIEWS_FOR_REBUILD = `
   }
 `
 
+const GET_EXTERNAL_REVIEWS_FOR_REBUILD = `
+  query RebuildGetExternalReviews($restaurantUuid: uuid!) {
+    restaurant_external_reviews(
+      where: {
+        restaurant_uuid: { _eq: $restaurantUuid }
+        is_flagged: { _eq: false }
+      }
+    ) {
+      rating
+      author_palates
+    }
+  }
+`
+
 const GET_RESTAURANT_FOR_REBUILD = `
   query RebuildGetRestaurant($uuid: uuid!) {
     restaurants(where: { uuid: { _eq: $uuid } }, limit: 1) {
@@ -164,7 +178,7 @@ export async function rebuildRatingSummary(restaurantUuid: string): Promise<void
   const uuid = restaurantUuid.trim()
   if (!uuid) return
 
-  const [reviewsResult, restaurantResult] = await Promise.all([
+  const [reviewsResult, restaurantResult, externalReviewsResult] = await Promise.all([
     hasuraQuery<{ restaurant_reviews: ReviewRow[] }>(GET_REVIEWS_FOR_REBUILD, {
       restaurantUuid: uuid,
     }),
@@ -172,6 +186,12 @@ export async function rebuildRatingSummary(restaurantUuid: string): Promise<void
       GET_RESTAURANT_FOR_REBUILD,
       { uuid },
     ),
+    hasuraQuery<{
+      restaurant_external_reviews: Array<{
+        rating: number
+        author_palates: string[] | null
+      }>
+    }>(GET_EXTERNAL_REVIEWS_FOR_REBUILD, { restaurantUuid: uuid }),
   ])
 
   if (reviewsResult.errors?.length) {
@@ -180,6 +200,10 @@ export async function rebuildRatingSummary(restaurantUuid: string): Promise<void
   }
   if (restaurantResult.errors?.length) {
     console.error('[rebuildRatingSummary] Restaurant query error:', restaurantResult.errors)
+    return
+  }
+  if (externalReviewsResult.errors?.length) {
+    console.error('[rebuildRatingSummary] External review query error:', externalReviewsResult.errors)
     return
   }
 
@@ -217,6 +241,20 @@ export async function rebuildRatingSummary(restaurantUuid: string): Promise<void
     const authorPalates = extractReviewPalates(profilePalates)
     const reviewerPalates =
       authorPalates.length > 0 ? authorPalates : extractReviewPalates(review.palates)
+
+    if (restaurantTaxonomy.length > 0 && hasMatchingPalates(restaurantTaxonomy, reviewerPalates)) {
+      authentic.sum += rating
+      authentic.count += 1
+    }
+  }
+
+  for (const review of externalReviewsResult.data?.restaurant_external_reviews ?? []) {
+    const rating = Number(review.rating) || 0
+    if (rating <= 0) continue
+
+    const reviewerPalates = (review.author_palates ?? [])
+      .map((slug) => String(slug).trim().toLowerCase())
+      .filter(Boolean)
 
     if (restaurantTaxonomy.length > 0 && hasMatchingPalates(restaurantTaxonomy, reviewerPalates)) {
       authentic.sum += rating

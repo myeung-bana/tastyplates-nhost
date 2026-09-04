@@ -9,6 +9,7 @@ import {
 } from '../_lib/user-profile'
 import { buildUserLocationProfileChanges } from '../_lib/userLocationProfile'
 import { resolveAuth } from '../_lib/auth-guard'
+import { scheduleUserPalateRebuilds } from '../_lib/scheduleUserPalateRebuilds'
 import { ok, fail } from '../_lib/respond'
 
 const ALLOWED_LOCALES = ['en', 'zh', 'ko'] as const
@@ -104,6 +105,10 @@ export default async (req: Request, res: Response): Promise<void> => {
     }
 
     await Promise.all(tasks)
+
+    if (body.palates !== undefined) {
+      scheduleUserPalateRebuilds(auth.userId)
+    }
 
     const profile = await getProfileById(auth.userId)
     if (!profile) return fail(res, 'User not found after update', 404)
