@@ -38,7 +38,7 @@ const GET_CUISINES = `
 const GET_COMBINED_ROWS = `
   query GetCombinedRowsForGroupScores(
     $cuisineIds: [Int!]!
-    $restaurantIds: [bigint!]
+    $restaurantIds: [Int!]!
   ) {
     restaurant_palate_rating_summary_combined(
       where: {
@@ -70,7 +70,7 @@ const RESOLVE_RESTAURANTS = `
 `
 
 const RESOLVE_RESTAURANT_IDS = `
-  query ResolveRestaurantIdsForGroupScores($ids: [bigint!]!) {
+  query ResolveRestaurantIdsForGroupScores($ids: [Int!]!) {
     restaurants(where: { id: { _in: $ids } }) {
       id uuid
     }
