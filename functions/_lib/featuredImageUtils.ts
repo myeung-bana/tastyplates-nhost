@@ -24,3 +24,26 @@ export function resolveEffectiveFeaturedImageUrl(
 export function needsFeaturedImageBackfill(url: string | null | undefined): boolean {
   return resolveEffectiveFeaturedImageUrl(url) == null
 }
+
+const GOOGLE_PHOTO_HOSTS = ['maps.googleapis.com', 'googleusercontent.com'] as const
+
+/** Google Places photo URLs (may carry the Maps API key) and scraped googleusercontent links. */
+export function isGooglePhotoUrl(url: string | null | undefined): boolean {
+  const trimmed = url?.trim()
+  if (!trimmed) return false
+  try {
+    const host = new URL(trimmed).hostname.toLowerCase()
+    return GOOGLE_PHOTO_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Like `resolveEffectiveFeaturedImageUrl`, but also rejects Google-hosted URLs.
+ * Use for fallback candidates that may be persisted onto `restaurants.featured_image_url`.
+ */
+export function resolveStorableFeaturedImageUrl(url: string | null | undefined): string | null {
+  const effective = resolveEffectiveFeaturedImageUrl(url)
+  return effective && !isGooglePhotoUrl(effective) ? effective : null
+}

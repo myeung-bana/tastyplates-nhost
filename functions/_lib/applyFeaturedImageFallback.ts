@@ -2,6 +2,7 @@ import { hasuraAdmin } from './hasura'
 import {
   needsFeaturedImageBackfill,
   resolveEffectiveFeaturedImageUrl,
+  resolveStorableFeaturedImageUrl,
 } from './featuredImageUtils'
 import { fetchPlaceCacheSafe } from './listEnrichment'
 
@@ -61,7 +62,8 @@ export async function applyFeaturedImageFromPlaceCache<T extends RowWithFeatured
     const placeId = row.google_place_id?.trim()
     if (!placeId) return { ...row, featured_image_url: null }
 
-    const photo = resolveEffectiveFeaturedImageUrl(
+    // Never serve or persist a Google-hosted (possibly keyed) cache photo.
+    const photo = resolveStorableFeaturedImageUrl(
       cacheMap.get(placeId)?.primary_photo_url,
     )
     if (!photo) return { ...row, featured_image_url: null }

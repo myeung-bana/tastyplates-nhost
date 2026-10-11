@@ -2,6 +2,7 @@ import { hasuraAdmin } from './hasura'
 import {
   needsFeaturedImageBackfill,
   resolveEffectiveFeaturedImageUrl,
+  resolveStorableFeaturedImageUrl,
 } from './featuredImageUtils'
 import { fetchPlaceCacheSafe } from './listEnrichment'
 
@@ -68,7 +69,8 @@ export async function backfillRestaurantFeaturedFromReview(
     const placeId = row.google_place_id?.trim()
     if (placeId) {
       const cacheMap = await fetchPlaceCacheSafe([placeId])
-      candidateUrl = resolveEffectiveFeaturedImageUrl(
+      // Skip Google-hosted (possibly API-keyed) cache photos; never persist them.
+      candidateUrl = resolveStorableFeaturedImageUrl(
         cacheMap.get(placeId)?.primary_photo_url,
       )
     }
