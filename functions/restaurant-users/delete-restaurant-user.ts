@@ -1,43 +1,44 @@
 import type { Request, Response } from 'express'
-import { softDeleteUserProfile, getProfileById } from '../_lib/user-profile'
+import { getProfileById } from '../_lib/user-profile'
 import { resolveAuth } from '../_lib/auth-guard'
-import { NHOST_AUTH_URL, NHOST_ADMIN_SECRET } from '../_lib/env'
+import {
+  anonymiseAccount,
+  DELETION_GRACE_DAYS,
+  requestAccountDeletion,
+} from '../_lib/accountDeletion'
 import { ok, fail } from '../_lib/respond'
 
+/**
+ * POST|DELETE `restaurant-users/delete-restaurant-user`
+ * Bearer required; acts only on the JWT user.
+ *
+ * Default: hides the profile, signs out every session and schedules anonymisation in
+ * DELETION_GRACE_DAYS days (signing back in can restore). `?immediate=true` anonymises now.
+ */
 export default async (req: Request, res: Response): Promise<void> => {
   try {
     const auth = await resolveAuth(req, res)
     if (!auth) return
 
-    const hard = req.query.hard === 'true'
-
     const existing = await getProfileById(auth.userId)
     if (!existing) return fail(res, 'User not found', 404)
 
-    if (hard) {
-      const deleteRes = await fetch(`${NHOST_AUTH_URL}/v1/users/${auth.userId}`, {
-        method: 'DELETE',
-        headers: {
-          'x-hasura-admin-secret': NHOST_ADMIN_SECRET,
-        },
-      })
-
-      if (!deleteRes.ok) {
-        const text = await deleteRes.text().catch(() => '')
-        console.error(
-          '[restaurant-users/delete-restaurant-user] hard delete failed',
-          deleteRes.status,
-          text,
-        )
-        return fail(res, 'Failed to delete account', 500)
-      }
-    } else {
-      await softDeleteUserProfile(auth.userId)
+    if (req.query.immediate === 'true' || req.query.hard === 'true') {
+      await requestAccountDeletion(auth.userId)
+      await anonymiseAccount(auth.userId)
+      return ok(res, { deleted: true, userId: auth.userId, immediate: true, scheduled_for: null })
     }
 
-    ok(res, { deleted: true, userId: auth.userId, hard })
+    const scheduledFor = await requestAccountDeletion(auth.userId)
+    ok(res, {
+      deleted: true,
+      userId: auth.userId,
+      immediate: false,
+      scheduled_for: scheduledFor,
+      grace_days: DELETION_GRACE_DAYS,
+    })
   } catch (error) {
     console.error('[restaurant-users/delete-restaurant-user]', error)
-    fail(res, 'Internal server error', 500)
+    fail(res, 'Failed to delete account', 500)
   }
 }

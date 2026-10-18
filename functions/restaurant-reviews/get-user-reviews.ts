@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express'
 import { resolveOptionalAuth } from '../_lib/auth-guard'
+import { getHiddenUserIds, isHidden } from '../_lib/userBlocks'
 import { isValidUuid } from '../_lib/review-enrichment'
 import {
   listUserReviews,
@@ -24,6 +25,10 @@ export default async (req: Request, res: Response): Promise<void> => {
     const authUserId = auth?.userId ?? null
     const hasBearer = Boolean(req.headers.authorization?.startsWith('Bearer '))
     const canReadPrivate = authUserId === authorId
+
+    if (authUserId && !canReadPrivate && isHidden(await getHiddenUserIds(authUserId), authorId)) {
+      return ok(res, { reviews: [], meta: { total: 0, limit, offset, hasMore: false } })
+    }
 
     if (status && PRIVATE_REVIEW_STATUSES.has(status) && !hasBearer) {
       return fail(res, 'Unauthorized', 401)

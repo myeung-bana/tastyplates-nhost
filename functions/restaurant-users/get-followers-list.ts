@@ -2,6 +2,7 @@ import type { Request, Response } from 'express'
 import { hasuraAdmin } from '../_lib/hasura'
 import { getProfilesByIds, toFollowListUser } from '../_lib/user-profile'
 import { ok, fail } from '../_lib/respond'
+import { getHiddenUserIdsForRequest, isHidden } from '../_lib/userBlocks'
 
 const GET_FOLLOWERS_LIST = `
   query GetFollowersList($userId: uuid!, $limit: Int, $offset: Int) {
@@ -52,14 +53,19 @@ export default async (req: Request, res: Response): Promise<void> => {
 
     if (followerIds.length === 0) return ok(res, { followers: [] })
 
-    const profiles = await getProfilesByIds(followerIds)
+    const [profiles, hidden] = await Promise.all([
+      getProfilesByIds(followerIds),
+      getHiddenUserIdsForRequest(req, res),
+    ])
     const userMap = new Map(profiles.map((p) => [p.user.id, toFollowListUser(p)]))
 
-    const followers = follows.map((f) => ({
-      follow_id: f.id,
-      followed_at: f.created_at,
-      user: userMap.get(f.follower_id) ?? null,
-    }))
+    const followers = follows
+      .filter((f) => userMap.has(f.follower_id) && !isHidden(hidden, f.follower_id))
+      .map((f) => ({
+        follow_id: f.id,
+        followed_at: f.created_at,
+        user: userMap.get(f.follower_id) ?? null,
+      }))
 
     ok(res, { followers })
   } catch (error) {

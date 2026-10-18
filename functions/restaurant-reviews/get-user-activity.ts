@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express'
 import { hasuraQuery } from '../_lib/hasura'
 import { resolveOptionalAuth } from '../_lib/auth-guard'
+import { getHiddenUserIds, isHidden } from '../_lib/userBlocks'
 import { listUserReviews } from '../_lib/list-user-reviews'
 import {
   buildAuthorProfileMap,
@@ -71,6 +72,10 @@ export default async (req: Request, res: Response): Promise<void> => {
     const auth = await resolveOptionalAuth(req, res)
     const authUserId = auth?.userId ?? null
     const canReadPrivate = authUserId === userId
+
+    if (authUserId && !canReadPrivate && isHidden(await getHiddenUserIds(authUserId), userId)) {
+      return ok(res, { activities: [], meta: { total: 0, limit, offset, hasMore: false } })
+    }
 
     const fetchLimit = Math.min(30, offset + limit + limit)
 

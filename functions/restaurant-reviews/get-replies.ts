@@ -6,6 +6,7 @@ import {
   safeEnrichReviewRows,
 } from '../_lib/review-enrichment'
 import { ok, fail } from '../_lib/respond'
+import { getHiddenUserIdsForRequest, withoutHiddenAuthors } from '../_lib/userBlocks'
 
 const GET_REVIEW_REPLIES = `
   query GetReviewReplies($parentReviewId: uuid!, $limit: Int, $offset: Int) {
@@ -52,7 +53,8 @@ export default async (req: Request, res: Response): Promise<void> => {
     const repliesRaw = result.data?.restaurant_reviews ?? []
     const total = result.data?.restaurant_reviews_aggregate.aggregate.count ?? 0
 
-    const replies = await safeEnrichReviewRows(repliesRaw)
+    const hidden = await getHiddenUserIdsForRequest(req, res)
+    const replies = await safeEnrichReviewRows(withoutHiddenAuthors(repliesRaw, hidden))
 
     ok(res, { replies, meta: { total, limit, offset, hasMore: offset + replies.length < total } })
   } catch (error) {

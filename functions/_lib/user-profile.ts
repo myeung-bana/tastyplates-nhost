@@ -233,12 +233,13 @@ export async function getProfileByUsername(username: string): Promise<UserProfil
   return data.user_profiles[0] ?? null
 }
 
+/** Active profiles only: soft-deleted accounts are omitted. */
 export async function getProfilesByIds(userIds: string[]): Promise<UserProfileRow[]> {
   if (userIds.length === 0) return []
   const data = await hasuraAdmin<{ user_profiles: UserProfileRow[] }>(
     `
       query GetUserProfilesByIds($userIds: [bpchar!]!) {
-        user_profiles(where: { user_id: { _in: $userIds } }) {
+        user_profiles(where: { user_id: { _in: $userIds }, deleted_at: { _is_null: true } }) {
           ${PROFILE_FIELDS}
         }
       }

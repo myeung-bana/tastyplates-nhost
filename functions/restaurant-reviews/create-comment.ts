@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { requireAuth, getUserId } from '../_lib/auth'
 import { hasuraMutation } from '../_lib/hasura'
 import { ok, fail } from '../_lib/respond'
+import { resolveTargetOwner } from '../_lib/contentReports'
+import { isBlockedEitherWay } from '../_lib/userBlocks'
 import { validate } from '../_lib/validate'
 
 const CreateCommentSchema = z.object({
@@ -34,6 +36,11 @@ export default async (req: Request, res: Response): Promise<void> => {
 
     const body = validate(req, res, CreateCommentSchema)
     if (!body) return
+
+    const parentOwner = await resolveTargetOwner('review', body.parent_review_id)
+    if (parentOwner && (await isBlockedEitherWay(authorId, parentOwner))) {
+      return fail(res, 'You cannot comment on this review', 403)
+    }
 
     type CreateResult = { insert_restaurant_reviews_one: unknown }
     const data = await hasuraMutation<CreateResult>(CREATE_COMMENT, {

@@ -13,6 +13,21 @@ import { scheduleUserPalateRebuilds } from '../_lib/scheduleUserPalateRebuilds'
 import { ok, fail } from '../_lib/respond'
 
 const ALLOWED_LOCALES = ['en', 'zh', 'ko'] as const
+const MINIMUM_AGE = 13
+
+/** Birthdate is optional; when provided it must be a real `YYYY-MM-DD` date for someone 13+. */
+function validateBirthdate(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') return null
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return 'birthdate must be YYYY-MM-DD'
+  }
+  const date = new Date(`${value}T00:00:00Z`)
+  if (Number.isNaN(date.getTime())) return 'birthdate is not a valid date'
+  const now = new Date()
+  const cutoff = Date.UTC(now.getUTCFullYear() - MINIMUM_AGE, now.getUTCMonth(), now.getUTCDate())
+  if (date.getTime() > cutoff) return `You must be at least ${MINIMUM_AGE} years old`
+  return null
+}
 
 function resolveAvatarUrl(profileImage: unknown): string | null {
   if (typeof profileImage === 'string' && profileImage.startsWith('http')) {
@@ -39,13 +54,18 @@ export default async (req: Request, res: Response): Promise<void> => {
       display_name?: string
       about_me?: string
       profile_image?: unknown
-      birthdate?: string
-      gender?: string
+      birthdate?: string | null
+      gender?: string | null
       pronoun?: string
       palates?: unknown
       language_preference?: string
       onboarding_complete?: boolean
     }
+
+    const birthdateError = validateBirthdate(body.birthdate)
+    if (birthdateError) return fail(res, birthdateError, 400)
+    if (body.birthdate === '') body.birthdate = null
+    if (typeof body.gender === 'string' && !body.gender.trim()) body.gender = null
 
     const existing = await getProfileById(auth.userId)
     if (!existing) return fail(res, 'User not found', 404)

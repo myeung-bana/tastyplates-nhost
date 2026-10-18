@@ -2,6 +2,7 @@ import type { Request, Response } from 'express'
 import { requireAuth, getUserId } from '../_lib/auth'
 import { hasuraMutation } from '../_lib/hasura'
 import { ok, fail } from '../_lib/respond'
+import { isBlockedEitherWay } from '../_lib/userBlocks'
 
 const FOLLOW_USER = `
   mutation FollowUser($followerId: uuid!, $userId: uuid!) {
@@ -23,6 +24,9 @@ export default async (req: Request, res: Response): Promise<void> => {
 
     if (!user_id) return fail(res, 'Missing required field: user_id', 400)
     if (!UUID_REGEX.test(user_id)) return fail(res, 'Invalid UUID format', 400)
+    if (await isBlockedEitherWay(followerId, user_id)) {
+      return fail(res, 'You cannot follow this user', 403)
+    }
 
     type Result = { insert_restaurant_user_follows_one: unknown }
     await hasuraMutation<Result>(FOLLOW_USER, { followerId, userId: user_id })

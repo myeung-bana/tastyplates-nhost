@@ -6,6 +6,7 @@ import {
   REVIEW_AUTHOR_GRAPHQL_NESTED,
 } from '../_lib/review-enrichment'
 import { ok, fail } from '../_lib/respond'
+import { getHiddenUserIdsForRequest, withoutHiddenAuthors } from '../_lib/userBlocks'
 
 const REVIEW_ROW_FIELDS = `
   id title content rating images palates hashtags mentions recognitions likes_count replies_count
@@ -108,7 +109,8 @@ export default async (req: Request, res: Response): Promise<void> => {
     const reviewsRaw = result.data?.restaurant_reviews ?? []
     const total = result.data?.restaurant_reviews_aggregate.aggregate.count ?? 0
 
-    const reviews = await safeEnrichReviewRows(reviewsRaw)
+    const hidden = await getHiddenUserIdsForRequest(req, res)
+    const reviews = await safeEnrichReviewRows(withoutHiddenAuthors(reviewsRaw, hidden))
 
     ok(res, { reviews, meta: { total, limit, offset, hasMore: offset + reviews.length < total } })
   } catch (error) {

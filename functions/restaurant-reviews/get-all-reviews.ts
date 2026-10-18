@@ -2,6 +2,7 @@ import type { Request, Response } from 'express'
 import { hasuraQuery } from '../_lib/hasura'
 import { safeEnrichReviewRows, REVIEW_AUTHOR_GRAPHQL_NESTED } from '../_lib/review-enrichment'
 import { ok, fail } from '../_lib/respond'
+import { getHiddenUserIdsForRequest, withoutHiddenAuthors } from '../_lib/userBlocks'
 
 const GET_ALL_REVIEWS = `
   query GetAllReviews($limit: Int, $offset: Int) {
@@ -84,11 +85,12 @@ export default async (req: Request, res: Response): Promise<void> => {
     >
     const total = result.data?.restaurant_reviews_aggregate.aggregate.count ?? 0
 
-    const reviews = await safeEnrichReviewRows(reviewsRaw)
+    const hidden = await getHiddenUserIdsForRequest(req, res)
+    const reviews = await safeEnrichReviewRows(withoutHiddenAuthors(reviewsRaw, hidden))
 
-    const lastItem = reviews[reviews.length - 1]
+    const lastItem = reviewsRaw[reviewsRaw.length - 1]
     const nextCursor = lastItem ? encodeReviewCursor(String(lastItem.created_at), String(lastItem.id)) : null
-    const hasMore = cursor ? reviews.length === limit : offset + reviews.length < total
+    const hasMore = cursor ? reviewsRaw.length === limit : offset + reviewsRaw.length < total
 
     ok(res, { reviews, meta: { total, limit, cursor: nextCursor, hasMore } })
   } catch (error) {
