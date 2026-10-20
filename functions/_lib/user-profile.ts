@@ -6,6 +6,8 @@ import { snapshotFromProfileRow, type UserLocationSnapshot } from './userLocatio
 const PROFILE_FIELDS = `
   user_id
   username
+  first_name
+  last_name
   about_me
   birthdate
   gender
@@ -46,6 +48,8 @@ const PROFILE_FIELDS = `
 export interface UserProfileRow {
   user_id: string
   username: string | null
+  first_name?: string | null
+  last_name?: string | null
   about_me: string | null
   birthdate: string | null
   gender: string | null
@@ -181,6 +185,17 @@ export function toLegacyUser(row: UserProfileRow): LegacyRestaurantUser {
     onboarding_complete: row.onboarding_complete,
     created_at: row.created_at,
     updated_at: row.updated_at,
+  }
+}
+
+/** {@link toLegacyUser} plus private fields — only for the signed-in user's own account. */
+export function toOwnLegacyUser(
+  row: UserProfileRow,
+): LegacyRestaurantUser & { first_name: string | null; last_name: string | null } {
+  return {
+    ...toLegacyUser(row),
+    first_name: row.first_name ?? null,
+    last_name: row.last_name ?? null,
   }
 }
 

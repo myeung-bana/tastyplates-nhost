@@ -2,7 +2,7 @@ import type { Request, Response } from 'express'
 import {
   createUserProfile,
   getProfileById,
-  toLegacyUser,
+  toOwnLegacyUser,
   updateUserProfile,
 } from '../_lib/user-profile'
 import { buildUserLocationProfileChanges } from '../_lib/userLocationProfile'
@@ -65,7 +65,7 @@ export default async (req: Request, res: Response): Promise<void> => {
       return fail(res, 'Profile created but could not be loaded', 500)
     }
 
-    ok(res, { user: toLegacyUser(profile) }, 201)
+    ok(res, { user: toOwnLegacyUser(profile) }, 201)
   } catch (error) {
     console.error('[restaurant-users/create-restaurant-user]', error)
     fail(res, 'Internal server error', 500)

@@ -55,6 +55,8 @@ export default async (req: Request, res: Response): Promise<void> => {
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20'), 100)
     const offset = parseInt(url.searchParams.get('offset') ?? '0') || 0
     const cursor = url.searchParams.get('cursor') ?? undefined
+    // Opt-in restaurant briefs (Home trending cards show the restaurant name).
+    const includeRestaurant = url.searchParams.get('include_restaurant') === '1'
 
     type ReviewsResult = {
       restaurant_reviews: Array<{ id: string; created_at: string; [key: string]: unknown }>
@@ -86,7 +88,9 @@ export default async (req: Request, res: Response): Promise<void> => {
     const total = result.data?.restaurant_reviews_aggregate.aggregate.count ?? 0
 
     const hidden = await getHiddenUserIdsForRequest(req, res)
-    const reviews = await safeEnrichReviewRows(withoutHiddenAuthors(reviewsRaw, hidden))
+    const reviews = await safeEnrichReviewRows(withoutHiddenAuthors(reviewsRaw, hidden), {
+      restaurants: includeRestaurant,
+    })
 
     const lastItem = reviewsRaw[reviewsRaw.length - 1]
     const nextCursor = lastItem ? encodeReviewCursor(String(lastItem.created_at), String(lastItem.id)) : null

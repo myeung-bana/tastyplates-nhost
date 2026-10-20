@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express'
 import {
   getProfileById,
-  toLegacyUser,
+  toOwnLegacyUser,
   updateUserAvatar,
   updateUserDisplayName,
   updateUserLocale,
@@ -14,6 +14,7 @@ import { ok, fail } from '../_lib/respond'
 
 const ALLOWED_LOCALES = ['en', 'zh', 'ko'] as const
 const MINIMUM_AGE = 13
+const NAME_MAX_LENGTH = 50
 
 /** Birthdate is optional; when provided it must be a real `YYYY-MM-DD` date for someone 13+. */
 function validateBirthdate(value: unknown): string | null {
@@ -27,6 +28,18 @@ function validateBirthdate(value: unknown): string | null {
   const cutoff = Date.UTC(now.getUTCFullYear() - MINIMUM_AGE, now.getUTCMonth(), now.getUTCDate())
   if (date.getTime() > cutoff) return `You must be at least ${MINIMUM_AGE} years old`
   return null
+}
+
+/** First / last name: optional strings up to {@link NAME_MAX_LENGTH}; blank clears. */
+function normalizeName(value: unknown, field: string): { value?: string | null; error?: string } {
+  if (value === undefined) return {}
+  if (value === null) return { value: null }
+  if (typeof value !== 'string') return { error: `${field} must be a string` }
+  const trimmed = value.trim()
+  if (trimmed.length > NAME_MAX_LENGTH) {
+    return { error: `${field} must be ${NAME_MAX_LENGTH} characters or fewer` }
+  }
+  return { value: trimmed || null }
 }
 
 function resolveAvatarUrl(profileImage: unknown): string | null {
@@ -52,6 +65,8 @@ export default async (req: Request, res: Response): Promise<void> => {
     const body = req.body as Record<string, unknown> & {
       username?: string
       display_name?: string
+      first_name?: string | null
+      last_name?: string | null
       about_me?: string
       profile_image?: unknown
       birthdate?: string | null
@@ -67,6 +82,11 @@ export default async (req: Request, res: Response): Promise<void> => {
     if (body.birthdate === '') body.birthdate = null
     if (typeof body.gender === 'string' && !body.gender.trim()) body.gender = null
 
+    const firstName = normalizeName(body.first_name, 'first_name')
+    if (firstName.error) return fail(res, firstName.error, 400)
+    const lastName = normalizeName(body.last_name, 'last_name')
+    if (lastName.error) return fail(res, lastName.error, 400)
+
     const existing = await getProfileById(auth.userId)
     if (!existing) return fail(res, 'User not found', 404)
 
@@ -75,6 +95,8 @@ export default async (req: Request, res: Response): Promise<void> => {
 
     const profileChanges: Record<string, unknown> = {}
     if (body.username !== undefined) profileChanges.username = body.username
+    if (firstName.value !== undefined) profileChanges.first_name = firstName.value
+    if (lastName.value !== undefined) profileChanges.last_name = lastName.value
     if (body.about_me !== undefined) profileChanges.about_me = body.about_me
     if (body.birthdate !== undefined) profileChanges.birthdate = body.birthdate
     if (body.gender !== undefined) profileChanges.gender = body.gender
@@ -98,8 +120,16 @@ export default async (req: Request, res: Response): Promise<void> => {
     const hasDisplayNameChange =
       body.display_name !== undefined && body.display_name !== ''
     const hasAvatarChange = avatarUrl !== null
+    // `profile_image: null` removes the custom photo (auth.users.avatarUrl is non-null, so '').
+    const removeAvatar = body.profile_image === null
 
-    if (!hasProfileChanges && !hasLocaleChange && !hasDisplayNameChange && !hasAvatarChange) {
+    if (
+      !hasProfileChanges &&
+      !hasLocaleChange &&
+      !hasDisplayNameChange &&
+      !hasAvatarChange &&
+      !removeAvatar
+    ) {
       return fail(res, 'No fields to update', 400)
     }
 
@@ -111,6 +141,8 @@ export default async (req: Request, res: Response): Promise<void> => {
     }
     if (hasAvatarChange && avatarUrl) {
       tasks.push(updateUserAvatar(auth.userId, avatarUrl))
+    } else if (removeAvatar) {
+      tasks.push(updateUserAvatar(auth.userId, ''))
     }
     if (hasLocaleChange) {
       const locale = ALLOWED_LOCALES.includes(
@@ -133,7 +165,7 @@ export default async (req: Request, res: Response): Promise<void> => {
     const profile = await getProfileById(auth.userId)
     if (!profile) return fail(res, 'User not found after update', 404)
 
-    ok(res, { user: toLegacyUser(profile) })
+    ok(res, { user: toOwnLegacyUser(profile) })
   } catch (error) {
     console.error('[restaurant-users/update-restaurant-user]', error)
     fail(res, 'Internal server error', 500)

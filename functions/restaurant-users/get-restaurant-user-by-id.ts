@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express'
-import { getProfileById, toLegacyUser } from '../_lib/user-profile'
+import { getProfileById, toLegacyUser, toOwnLegacyUser } from '../_lib/user-profile'
 import { resolveOptionalAuth } from '../_lib/auth-guard'
 import { ok, fail } from '../_lib/respond'
 
@@ -14,12 +14,12 @@ export default async (req: Request, res: Response): Promise<void> => {
     const profile = await getProfileById(id)
     if (!profile) return fail(res, 'User not found', 404)
 
-    if (profile.deleted_at) {
-      const viewer = await resolveOptionalAuth(req, res)
-      if (viewer?.userId !== profile.user.id) return fail(res, 'User not found', 404)
-    }
+    const viewer = await resolveOptionalAuth(req, res)
+    const isSelf = viewer?.userId === profile.user.id
+    if (profile.deleted_at && !isSelf) return fail(res, 'User not found', 404)
 
-    ok(res, { user: toLegacyUser(profile) })
+    // First / last name are private: only the account owner gets them.
+    ok(res, { user: isSelf ? toOwnLegacyUser(profile) : toLegacyUser(profile) })
   } catch (error) {
     console.error('[restaurant-users/get-restaurant-user-by-id]', error)
     fail(res, 'Internal server error', 500)

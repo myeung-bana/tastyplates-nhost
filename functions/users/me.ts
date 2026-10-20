@@ -10,7 +10,12 @@ export default async (req: Request, res: Response): Promise<void> => {
 
     const { profile } = await ensureUserProfile(auth.userId)
 
-    ok(res, toPublicProfile(profile))
+    // Own account: include the private first / last name used for display-name options.
+    ok(res, {
+      ...toPublicProfile(profile),
+      first_name: profile.first_name ?? null,
+      last_name: profile.last_name ?? null,
+    })
   } catch (error) {
     console.error('[users/me]', error)
     fail(res, 'Internal server error', 500)

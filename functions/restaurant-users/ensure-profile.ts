@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express'
-import { ensureUserProfile, toLegacyUser } from '../_lib/user-profile'
+import { ensureUserProfile, toOwnLegacyUser } from '../_lib/user-profile'
 import { resolveAuth } from '../_lib/auth-guard'
 import { getDeletionState, isDeletionPending } from '../_lib/accountDeletion'
 import { ok, fail } from '../_lib/respond'
@@ -21,7 +21,7 @@ export default async (req: Request, res: Response): Promise<void> => {
       ? { pending: true, scheduled_for: state?.deletion_scheduled_for ?? null }
       : null
 
-    ok(res, { user: toLegacyUser(profile), created, deletion }, created ? 201 : 200)
+    ok(res, { user: toOwnLegacyUser(profile), created, deletion }, created ? 201 : 200)
   } catch (error) {
     console.error('[restaurant-users/ensure-profile]', error)
     fail(res, 'Internal server error', 500)

@@ -37,7 +37,8 @@ export default async (req: Request, res: Response): Promise<void> => {
       offset,
       summary: false,
       canReadPrivate,
-      enrichRestaurants: false,
+      // Opt-in: profile Reviews grid shows the restaurant name (`include_restaurant=1`).
+      enrichRestaurants: req.query.include_restaurant === '1',
       logTag: '[restaurant-users/get-reviews]',
     })
 
