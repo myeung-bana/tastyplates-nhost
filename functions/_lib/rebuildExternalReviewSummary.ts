@@ -1,6 +1,6 @@
 import { hasuraAdmin, hasuraQuery } from './hasura'
 import type { ExternalReviewSummaryRow } from './externalReviewTypes'
-import { schedulePalateRatingSummaryRebuild } from './rebuildPalateRatingSummary'
+import { scheduleRatingSummaryRebuild } from './rebuildRatingSummary'
 
 const GET_REVIEWS_FOR_SUMMARY = `
   query ExternalReviewsForSummary($restaurantUuid: uuid!) {
@@ -109,7 +109,15 @@ function aggregateReviews(rows: ReviewAggRow[]): Omit<ExternalReviewSummaryRow, 
   }
 }
 
-export async function rebuildExternalReviewSummary(restaurantUuid: string): Promise<boolean> {
+/**
+ * Rebuild the external signal summary (taste tags, sentiment, platforms…) for one restaurant.
+ * With `cascade` (default) it also schedules the v3 rating rebuild, because scraped reviews feed
+ * Overall, Authentic and the palate rows. Backfills that rebuild ratings separately pass false.
+ */
+export async function rebuildExternalReviewSummary(
+  restaurantUuid: string,
+  options?: { cascade?: boolean },
+): Promise<boolean> {
   const uuid = restaurantUuid.trim()
   if (!uuid) return false
 
@@ -134,12 +142,14 @@ export async function rebuildExternalReviewSummary(restaurantUuid: string): Prom
     },
   })
 
-  schedulePalateRatingSummaryRebuild(uuid, 'external')
+  if (options?.cascade !== false) scheduleRatingSummaryRebuild(uuid)
 
   return true
 }
 
-export async function rebuildAllExternalReviewSummaries(): Promise<number> {
+export async function rebuildAllExternalReviewSummaries(options?: {
+  cascade?: boolean
+}): Promise<number> {
   const result = await hasuraQuery<{
     restaurant_external_reviews: Array<{ restaurant_uuid: string }>
   }>(GET_ALL_RESTAURANT_UUIDS_WITH_EXTERNAL)
@@ -158,7 +168,7 @@ export async function rebuildAllExternalReviewSummaries(): Promise<number> {
 
   let rebuilt = 0
   for (const uuid of uuids) {
-    await rebuildExternalReviewSummary(uuid)
+    await rebuildExternalReviewSummary(uuid, options)
     rebuilt++
   }
   return rebuilt

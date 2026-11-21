@@ -1,5 +1,14 @@
 import { hasuraQuery } from './hasura'
-import { aggregatePreferenceStatsByPalates } from './preference-stats-aggregate'
+import {
+  hasIdentity,
+  leafIdsForSlugs,
+  NATIVE_WEIGHT,
+  resolveRestaurantCuisines,
+  reviewerHasAnyLeaf,
+  SCRAPED_WEIGHT,
+  scorePool,
+} from './reviewPool'
+import { loadReviewPool } from './reviewPoolLoader'
 
 import {
   PALATE_RATING_MIN_LEAF_REVIEWS,
@@ -20,6 +29,8 @@ export type PalateRatingRow = {
   rating_avg: number | null
   rating_weighted: number | null
   reviewer_count: number
+  /** Σ weight × review_count (native 2, scraped 1). For combined rows this is the view's column. */
+  total_weight: number
   has_data: boolean
   updated_at: string | null
 }
@@ -38,6 +49,7 @@ type CuisineRecord = {
 
 type StoredMetrics = {
   review_count: number
+  total_weight: number
   rating_sum: number | null
   rating_avg: number | null
   rating_weighted: number | null
@@ -70,7 +82,7 @@ const GET_COMBINED_ROWS = `
       where: { restaurant_id: { _eq: $restaurantId } }
       order_by: { cuisine_id: asc }
     ) {
-      cuisine_id review_count rating_sum rating_avg rating_weighted reviewer_count
+      cuisine_id review_count rating_sum rating_avg rating_weighted reviewer_count total_weight
     }
   }
 `
@@ -81,6 +93,7 @@ function normalizeSlug(value: string): string {
 
 const EMPTY_METRICS: StoredMetrics = {
   review_count: 0,
+  total_weight: 0,
   rating_sum: null,
   rating_avg: null,
   rating_weighted: null,
@@ -111,6 +124,7 @@ function buildCuisineRow(
     rating_avg: hasData ? metrics.rating_avg : null,
     rating_weighted: hasData ? metrics.rating_weighted : null,
     reviewer_count: metrics.reviewer_count,
+    total_weight: metrics.total_weight,
     has_data: hasData,
     updated_at: metrics.updated_at ?? null,
   }
@@ -130,6 +144,7 @@ function buildMetricsMaps(
   combinedRows: Array<{
     cuisine_id: number
     review_count: number
+    total_weight: number
     rating_sum: number
     rating_avg: number | null
     rating_weighted: number | null
@@ -141,8 +156,10 @@ function buildMetricsMaps(
   const combined = new Map<number, StoredMetrics>()
 
   for (const row of summaryRows) {
+    const weight = row.review_source === 'first_party' ? NATIVE_WEIGHT : SCRAPED_WEIGHT
     const metrics: StoredMetrics = {
       review_count: row.review_count,
+      total_weight: row.review_count * weight,
       rating_sum: row.rating_sum,
       rating_avg: row.rating_avg,
       rating_weighted: row.rating_weighted,
@@ -156,6 +173,7 @@ function buildMetricsMaps(
   for (const row of combinedRows) {
     combined.set(row.cuisine_id, {
       review_count: row.review_count,
+      total_weight: Number(row.total_weight) || 0,
       rating_sum: row.rating_sum,
       rating_avg: row.rating_avg,
       rating_weighted: row.rating_weighted,
@@ -206,9 +224,9 @@ export async function getRestaurantPalateRatings(
   sourceFilter: 'all' | PalateRatingSource | 'combined' = 'all',
 ) {
   const uuid = restaurantUuid.trim()
-  const resolved = await hasuraQuery<{ restaurants: Array<{ id: number }> }>(
+  const resolved = await hasuraQuery<{ restaurants: Array<{ id: number; cuisines: unknown }> }>(
     `query ResolveRestaurant($uuid: uuid!) {
-      restaurants(where: { uuid: { _eq: $uuid } }, limit: 1) { id }
+      restaurants(where: { uuid: { _eq: $uuid } }, limit: 1) { id cuisines }
     }`,
     { uuid },
   )
@@ -240,9 +258,18 @@ export async function getRestaurantPalateRatings(
         rating_avg: number | null
         rating_weighted: number | null
         reviewer_count: number
+        total_weight: number
       }>
     }>(GET_COMBINED_ROWS, { restaurantId }),
   ])
+
+  // Coverage and score links come from the same review pool the scores use.
+  const pool = await loadReviewPool({ restaurantUuids: [uuid] })
+  const withPalate = pool.entries.filter((entry) => hasIdentity(entry.identity)).length
+  const restaurantCuisines = resolveRestaurantCuisines(
+    resolved.data?.restaurants?.[0]?.cuisines,
+    pool.taxonomy,
+  )
 
   if (cuisinesResult.errors?.length) {
     throw new Error(cuisinesResult.errors.map((e) => e.message).join(', '))
@@ -295,6 +322,16 @@ export async function getRestaurantPalateRatings(
     },
     meta: {
       min_leaf_review_count: PALATE_RATING_MIN_LEAF_REVIEWS,
+      /** Review pool for this restaurant (v3). Reviews without a palate only reach Overall. */
+      coverage: {
+        pool_reviews: pool.entries.length,
+        native_reviews: pool.entries.filter((entry) => entry.source === 'first_party').length,
+        scraped_reviews: pool.entries.filter((entry) => entry.source === 'external').length,
+        with_palate: withPalate,
+        overall_only: pool.entries.length - withPalate,
+      },
+      /** Cuisine/region ids whose rows feed Authentic (the restaurant's own cuisines). Region rows feed Group. */
+      authentic_cuisine_ids: [...restaurantCuisines.leafIds, ...restaurantCuisines.regionIds],
       total_cuisines: cuisines.length,
       populated_counts: {
         external: sources.external.filter((row) => row.has_data).length,
@@ -352,36 +389,39 @@ export async function getPreferenceStatsForRestaurant(
   const uuid = restaurantUuid.trim()
   const slugs = [...new Set(palateSlugs.map(normalizeSlug).filter(Boolean))]
 
+  // One pool load for this restaurant; each palate and the union are scored from it.
+  const { entries, taxonomy } = await loadReviewPool({ restaurantUuids: [uuid] })
+
   const statsByPalate: Record<
     string,
     { avg: number | null; count: number; shared_unlocked: boolean }
   > = {}
 
-  let combinedSum = 0
-  let combinedCount = 0
-
   for (const slug of slugs) {
-    const stats = await aggregatePreferenceStatsByPalates([slug])
-    const row = stats[uuid]
-    const count = row?.count ?? 0
+    const score = scorePool(
+      entries,
+      reviewerHasAnyLeaf(leafIdsForSlugs([slug], taxonomy, { expandRegions: true })),
+    )
     statsByPalate[slug] = {
-      avg: row?.avg ?? null,
-      count,
-      shared_unlocked: count >= PALATE_RATING_MIN_LEAF_REVIEWS,
-    }
-    if (row) {
-      combinedSum += row.avg * row.count
-      combinedCount += row.count
+      avg: score.display_avg,
+      count: score.review_count,
+      shared_unlocked: score.review_count >= PALATE_RATING_MIN_LEAF_REVIEWS,
     }
   }
+
+  // Union of the requested palates: a reviewer with two of them counts once.
+  const combined = scorePool(
+    entries,
+    reviewerHasAnyLeaf(leafIdsForSlugs(slugs, taxonomy, { expandRegions: true })),
+  )
 
   return {
     restaurant_uuid: uuid,
     palates_requested: slugs,
     stats_by_palate: statsByPalate,
     combined: {
-      avg: combinedCount > 0 ? Number((combinedSum / combinedCount).toFixed(2)) : null,
-      count: combinedCount,
+      avg: combined.display_avg != null ? Number(combined.display_avg.toFixed(2)) : null,
+      count: combined.review_count,
     },
   }
 }

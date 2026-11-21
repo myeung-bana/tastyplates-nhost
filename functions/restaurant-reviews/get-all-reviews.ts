@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express'
 import { hasuraQuery } from '../_lib/hasura'
+import { PUBLIC_REVIEW_STATUS_WHERE } from '../_lib/reviewPool'
 import { safeEnrichReviewRows, REVIEW_AUTHOR_GRAPHQL_NESTED } from '../_lib/review-enrichment'
 import { ok, fail } from '../_lib/respond'
 import { getHiddenUserIdsForRequest, withoutHiddenAuthors } from '../_lib/userBlocks'
@@ -7,7 +8,7 @@ import { getHiddenUserIdsForRequest, withoutHiddenAuthors } from '../_lib/userBl
 const GET_ALL_REVIEWS = `
   query GetAllReviews($limit: Int, $offset: Int) {
     restaurant_reviews(
-      where: { deleted_at: { _is_null: true } parent_review_id: { _is_null: true } status: { _eq: "approved" } }
+      where: { deleted_at: { _is_null: true } parent_review_id: { _is_null: true } ${PUBLIC_REVIEW_STATUS_WHERE} }
       order_by: [{ created_at: desc }, { id: desc }]
       limit: $limit offset: $offset
     ) {
@@ -16,7 +17,7 @@ const GET_ALL_REVIEWS = `
       ${REVIEW_AUTHOR_GRAPHQL_NESTED}
     }
     restaurant_reviews_aggregate(
-      where: { deleted_at: { _is_null: true } parent_review_id: { _is_null: true } status: { _eq: "approved" } }
+      where: { deleted_at: { _is_null: true } parent_review_id: { _is_null: true } ${PUBLIC_REVIEW_STATUS_WHERE} }
     ) { aggregate { count } }
   }
 `
@@ -25,7 +26,7 @@ const GET_ALL_REVIEWS_CURSOR = `
   query GetAllReviewsCursor($limit: Int!, $cursorCreatedAt: timestamptz!, $cursorId: uuid!) {
     restaurant_reviews(
       where: { _and: [
-        { deleted_at: { _is_null: true } } { parent_review_id: { _is_null: true } } { status: { _eq: "approved" } }
+        { deleted_at: { _is_null: true } } { parent_review_id: { _is_null: true } } { ${PUBLIC_REVIEW_STATUS_WHERE} }
         { _or: [{ created_at: { _lt: $cursorCreatedAt } } { _and: [{ created_at: { _eq: $cursorCreatedAt } } { id: { _lt: $cursorId } }] }] }
       ]}
       order_by: [{ created_at: desc }, { id: desc }]
@@ -36,7 +37,7 @@ const GET_ALL_REVIEWS_CURSOR = `
       ${REVIEW_AUTHOR_GRAPHQL_NESTED}
     }
     restaurant_reviews_aggregate(
-      where: { deleted_at: { _is_null: true } parent_review_id: { _is_null: true } status: { _eq: "approved" } }
+      where: { deleted_at: { _is_null: true } parent_review_id: { _is_null: true } ${PUBLIC_REVIEW_STATUS_WHERE} }
     ) { aggregate { count } }
   }
 `

@@ -1,4 +1,5 @@
 import { hasuraQuery } from './hasura'
+import { PUBLIC_REVIEW_STATUS_WHERE } from './reviewPool'
 import { getExternalReviewSummary } from './externalReviewQueries'
 import type { ExternalReviewSummaryRow } from './externalReviewTypes'
 
@@ -26,7 +27,7 @@ const GET_FIRST_PARTY_PALATES = `
         restaurant_uuid: { _eq: $restaurantUuid }
         deleted_at: { _is_null: true }
         parent_review_id: { _is_null: true }
-        status: { _eq: "approved" }
+        ${PUBLIC_REVIEW_STATUS_WHERE}
       }
     ) {
       palates

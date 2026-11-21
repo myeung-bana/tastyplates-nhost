@@ -1,4 +1,5 @@
 import { hasuraQuery } from './hasura'
+import { PUBLIC_REVIEW_STATUS_WHERE } from './reviewPool'
 import {
   isValidUuid,
   REVIEW_AUTHOR_GRAPHQL_NESTED,
@@ -58,7 +59,7 @@ function buildPublicUserReviewsQuery(fields: string, nestedAuthor: string): stri
         author_id: { _eq: $authorId }
         deleted_at: { _is_null: true }
         parent_review_id: { _is_null: true }
-        status: { _eq: "approved" }
+        ${PUBLIC_REVIEW_STATUS_WHERE}
       }
       order_by: [{ created_at: desc }, { id: desc }]
       limit: $limit offset: $offset
@@ -71,7 +72,7 @@ function buildPublicUserReviewsQuery(fields: string, nestedAuthor: string): stri
         author_id: { _eq: $authorId }
         deleted_at: { _is_null: true }
         parent_review_id: { _is_null: true }
-        status: { _eq: "approved" }
+        ${PUBLIC_REVIEW_STATUS_WHERE}
       }
     ) { aggregate { count } }
   }
@@ -112,8 +113,9 @@ function buildQuerySet(summary: boolean) {
 const FULL_QUERIES = buildQuerySet(false)
 const SUMMARY_QUERIES = buildQuerySet(true)
 
-export const PRIVATE_REVIEW_STATUSES = new Set(['draft', 'pending'])
-export const PUBLIC_REVIEW_STATUSES = new Set(['approved'])
+/** Rating Model v3: everything except draft and rejected is public (see reviewPool.ts). */
+export const PRIVATE_REVIEW_STATUSES = new Set(['draft'])
+export const PUBLIC_REVIEW_STATUSES = new Set(['approved', 'pending'])
 
 type ReviewsQueryResult = {
   restaurant_reviews: Array<Record<string, unknown>>

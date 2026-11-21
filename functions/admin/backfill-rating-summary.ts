@@ -2,6 +2,7 @@ import type { Request, Response } from 'express'
 import { ADMIN_SECRET } from '../_lib/env'
 import { hasuraQuery } from '../_lib/hasura'
 import { rebuildRatingSummary } from '../_lib/rebuildRatingSummary'
+import { PUBLIC_REVIEW_STATUS_WHERE } from '../_lib/reviewPool'
 import { ok, fail } from '../_lib/respond'
 
 const GET_PUBLISHED_RESTAURANT_UUIDS = `
@@ -18,10 +19,19 @@ const GET_REVIEWED_RESTAURANT_UUIDS = `
       where: {
         deleted_at: { _is_null: true }
         parent_review_id: { _is_null: true }
-        status: { _eq: "approved" }
+        ${PUBLIC_REVIEW_STATUS_WHERE}
       }
       distinct_on: restaurant_uuid
     ) {
+      restaurant_uuid
+    }
+  }
+`
+
+// Scraped reviews feed Overall in v3, so restaurants with only scraped reviews need a rebuild too.
+const GET_SCRAPED_RESTAURANT_UUIDS = `
+  query GetScrapedRestaurantUuids {
+    restaurant_external_reviews(where: { is_flagged: { _eq: false } }, distinct_on: restaurant_uuid) {
       restaurant_uuid
     }
   }
@@ -34,10 +44,13 @@ export default async (req: Request, res: Response): Promise<void> => {
       return fail(res, 'Unauthorized', 401)
     }
 
-    const [publishedResult, reviewedResult] = await Promise.all([
+    const [publishedResult, reviewedResult, scrapedResult] = await Promise.all([
       hasuraQuery<{ restaurants: Array<{ uuid: string }> }>(GET_PUBLISHED_RESTAURANT_UUIDS),
       hasuraQuery<{ restaurant_reviews: Array<{ restaurant_uuid: string | null }> }>(
         GET_REVIEWED_RESTAURANT_UUIDS,
+      ),
+      hasuraQuery<{ restaurant_external_reviews: Array<{ restaurant_uuid: string | null }> }>(
+        GET_SCRAPED_RESTAURANT_UUIDS,
       ),
     ])
 
@@ -49,11 +62,18 @@ export default async (req: Request, res: Response): Promise<void> => {
       console.error('[admin/backfill-rating-summary]', reviewedResult.errors)
       return fail(res, 'Failed to fetch reviewed restaurants', 500)
     }
+    if (scrapedResult.errors?.length) {
+      console.error('[admin/backfill-rating-summary]', scrapedResult.errors)
+      return fail(res, 'Failed to fetch restaurants with scraped reviews', 500)
+    }
 
     const uuids = [
       ...new Set([
         ...(publishedResult.data?.restaurants.map((r) => r.uuid) ?? []),
         ...(reviewedResult.data?.restaurant_reviews
+          .map((r) => r.restaurant_uuid?.trim())
+          .filter((uuid): uuid is string => Boolean(uuid)) ?? []),
+        ...(scrapedResult.data?.restaurant_external_reviews
           .map((r) => r.restaurant_uuid?.trim())
           .filter((uuid): uuid is string => Boolean(uuid)) ?? []),
       ]),
@@ -76,7 +96,8 @@ export default async (req: Request, res: Response): Promise<void> => {
     let externalRebuilt = 0
     try {
       const { rebuildAllExternalReviewSummaries } = await import('../_lib/rebuildExternalReviewSummary')
-      externalRebuilt = await rebuildAllExternalReviewSummaries()
+      // Ratings were rebuilt above; don't schedule them again per restaurant.
+      externalRebuilt = await rebuildAllExternalReviewSummaries({ cascade: false })
     } catch (err) {
       console.warn('[admin/backfill-rating-summary] external summary backfill skipped', err)
     }

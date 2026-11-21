@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express'
 import { requireAuth, getUserId } from '../_lib/auth'
 import { hasuraQuery } from '../_lib/hasura'
+import { PUBLIC_REVIEW_STATUS_WHERE } from '../_lib/reviewPool'
 import {
   buildAuthorProfileMap,
   fetchRestaurantBriefMap,
@@ -23,7 +24,7 @@ const GET_FOLLOWING_IDS = `
 const GET_FOLLOWING_REVIEWS = `
   query GetFollowingFeedReviews($authorIds: [uuid!]!, $limit: Int) {
     restaurant_reviews(
-      where: { author_id: { _in: $authorIds } deleted_at: { _is_null: true } parent_review_id: { _is_null: true } status: { _eq: "approved" } }
+      where: { author_id: { _in: $authorIds } deleted_at: { _is_null: true } parent_review_id: { _is_null: true } ${PUBLIC_REVIEW_STATUS_WHERE} }
       order_by: [{ created_at: desc }, { id: desc }]
       limit: $limit
     ) {
@@ -53,7 +54,7 @@ const GET_FOLLOWING_COMMENTS = `
         author_id: { _in: $authorIds }
         deleted_at: { _is_null: true }
         parent_review_id: { _is_null: false }
-        status: { _eq: "approved" }
+        ${PUBLIC_REVIEW_STATUS_WHERE}
       }
       order_by: [{ created_at: desc }, { id: desc }]
       limit: $limit

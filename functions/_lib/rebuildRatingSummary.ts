@@ -1,55 +1,29 @@
-import { hasuraAdmin, hasuraQuery } from './hasura'
+import { hasuraAdmin } from './hasura'
 import {
-  applyGoogleRatingAggregate,
-  fetchGoogleRatingAggregateForRestaurant,
-} from './googleRatingPrior'
-import { hasMatchingPalates, normalizePalates } from './palateUtils'
-import { buildAuthorProfileMap } from './review-enrichment'
-import { schedulePalateRatingSummaryRebuild } from './rebuildPalateRatingSummary'
+  everyone,
+  type PoolScore,
+  resolveRestaurantCuisines,
+  reviewerMatchesRestaurantCuisines,
+  scorePool,
+} from './reviewPool'
+import { loadReviewPool } from './reviewPoolLoader'
+import { schedulePalateRatingSummaryRebuildBoth } from './rebuildPalateRatingSummary'
 
-const GLOBAL_MEAN = 4.0
-const CONFIDENCE_M = 5
-
-function bayesianWeighted(avg: number, count: number): number {
-  return Number((((avg * count) + (GLOBAL_MEAN * CONFIDENCE_M)) / (count + CONFIDENCE_M)).toFixed(4))
-}
-
-const GET_REVIEWS_FOR_REBUILD = `
-  query RebuildGetReviews($restaurantUuid: uuid!) {
-    restaurant_reviews(
-      where: {
-        restaurant_uuid: { _eq: $restaurantUuid }
-        deleted_at: { _is_null: true }
-        parent_review_id: { _is_null: true }
-      }
-    ) {
-      author_id
-      rating
-      status
-      palates
-    }
-  }
-`
-
-const GET_EXTERNAL_REVIEWS_FOR_REBUILD = `
-  query RebuildGetExternalReviews($restaurantUuid: uuid!) {
-    restaurant_external_reviews(
-      where: {
-        restaurant_uuid: { _eq: $restaurantUuid }
-        is_flagged: { _eq: false }
-      }
-    ) {
-      rating
-      author_palates
-    }
-  }
-`
+/**
+ * Rating Model v3 — Overall + Authentic for one restaurant.
+ *
+ * Both come from the review pool (native × 2 + scraped × 1, no Google aggregate) via `scorePool`.
+ * Column meanings in `restaurant_rating_summary`:
+ *   *_review_count    number of reviews
+ *   *_rating_sum      weighted sum (Σ weight × rating)
+ *   *_rating_avg      weighted average — shown to users
+ *   *_rating_weighted Bayesian ranking value in weight units — sorting only
+ */
 
 const GET_RESTAURANT_FOR_REBUILD = `
   query RebuildGetRestaurant($uuid: uuid!) {
     restaurants(where: { uuid: { _eq: $uuid } }, limit: 1) {
       id
-      palates
       cuisines
     }
   }
@@ -116,216 +90,114 @@ const UPDATE_RESTAURANT_RATING = `
   }
 `
 
-function extractCuisineIds(cuisines: unknown): number[] {
-  if (!cuisines) return []
-  const arr = Array.isArray(cuisines)
-    ? cuisines
-    : (() => {
-        try {
-          return JSON.parse(String(cuisines)) as unknown[]
-        } catch {
-          return []
-        }
-      })()
-  return (arr as unknown[])
-    .map((c) => {
-      if (typeof c === 'object' && c !== null && 'id' in c) return Number((c as { id: unknown }).id)
-      return NaN
-    })
-    .filter((id) => !isNaN(id) && id > 0)
+export type RatingSummaryRebuildResult = {
+  restaurant_uuid: string
+  restaurant_id: number
+  overall: PoolScore
+  authentic: PoolScore
 }
 
-function extractReviewPalates(palates: unknown): string[] {
-  if (!palates) return []
-  if (Array.isArray(palates)) {
-    if (palates.every((p) => typeof p === 'string')) {
-      return palates.map((p) => String(p).trim().toLowerCase()).filter(Boolean)
-    }
-    return palates
-      .map((p) =>
-        typeof p === 'string'
-          ? p
-          : String((p as { slug?: string; name?: string })?.slug ?? (p as { name?: string })?.name ?? ''),
-      )
-      .filter(Boolean)
-      .map((p) => p.trim().toLowerCase())
-  }
-  if (typeof palates === 'string') {
-    try {
-      return extractReviewPalates(JSON.parse(palates) as unknown)
-    } catch {
-      return palates
-        .split('|')
-        .map((s) => s.trim().toLowerCase())
-        .filter(Boolean)
-    }
-  }
-  return []
+export type RatingSummaryComputation = RatingSummaryRebuildResult & {
+  /** The restaurant's valid cuisine ids (deleted ids dropped); keys for the legacy per-cuisine table. */
+  cuisine_ids: number[]
 }
 
-type ReviewRow = {
-  author_id: string | null
-  rating: number | null
-  status: string
-  palates: unknown
-}
-
-/**
- * Recompute rating aggregates for one restaurant and persist them.
- * Safe to call concurrently; upsert is idempotent.
- */
-export async function rebuildRatingSummary(restaurantUuid: string): Promise<void> {
+/** Compute Overall + Authentic without writing anything (used by dry runs and the rebuild). */
+export async function computeRatingSummary(
+  restaurantUuid: string,
+): Promise<RatingSummaryComputation | null> {
   const uuid = restaurantUuid.trim()
-  if (!uuid) return
+  if (!uuid) return null
 
-  const [reviewsResult, restaurantResult, externalReviewsResult] = await Promise.all([
-    hasuraQuery<{ restaurant_reviews: ReviewRow[] }>(GET_REVIEWS_FOR_REBUILD, {
-      restaurantUuid: uuid,
-    }),
-    hasuraQuery<{ restaurants: Array<{ id: number; palates: unknown; cuisines: unknown }> }>(
+  const [restaurantData, pool] = await Promise.all([
+    hasuraAdmin<{ restaurants: Array<{ id: number; cuisines: unknown }> }>(
       GET_RESTAURANT_FOR_REBUILD,
       { uuid },
     ),
-    hasuraQuery<{
-      restaurant_external_reviews: Array<{
-        rating: number
-        author_palates: string[] | null
-      }>
-    }>(GET_EXTERNAL_REVIEWS_FOR_REBUILD, { restaurantUuid: uuid }),
+    loadReviewPool({ restaurantUuids: [uuid] }),
   ])
 
-  if (reviewsResult.errors?.length) {
-    console.error('[rebuildRatingSummary] Review query error:', reviewsResult.errors)
-    return
+  const restaurant = restaurantData.restaurants?.[0]
+  if (!restaurant) return null
+
+  const cuisines = resolveRestaurantCuisines(restaurant.cuisines, pool.taxonomy)
+  const hasCuisines = cuisines.leafIds.size > 0 || cuisines.regionIds.size > 0
+
+  return {
+    restaurant_uuid: uuid,
+    restaurant_id: restaurant.id,
+    overall: scorePool(pool.entries, everyone),
+    authentic: hasCuisines
+      ? scorePool(pool.entries, reviewerMatchesRestaurantCuisines(cuisines))
+      : scorePool([]),
+    cuisine_ids: [...cuisines.leafIds, ...cuisines.regionIds],
   }
-  if (restaurantResult.errors?.length) {
-    console.error('[rebuildRatingSummary] Restaurant query error:', restaurantResult.errors)
-    return
+}
+
+function summaryColumns(prefix: 'overall' | 'authentic' | 'search', score: PoolScore) {
+  return {
+    [`${prefix}_review_count`]: score.review_count,
+    [`${prefix}_rating_sum`]: score.weighted_sum,
+    [`${prefix}_rating_avg`]: score.display_avg,
+    [`${prefix}_rating_weighted`]: score.ranking_value,
   }
-  if (externalReviewsResult.errors?.length) {
-    console.error('[rebuildRatingSummary] External review query error:', externalReviewsResult.errors)
-    return
-  }
+}
 
-  const restaurant = restaurantResult.data?.restaurants?.[0]
-  if (!restaurant) {
-    console.warn('[rebuildRatingSummary] Restaurant not found:', uuid)
-    return
-  }
-
-  const reviews = reviewsResult.data?.restaurant_reviews ?? []
-  const googleAggregate = await fetchGoogleRatingAggregateForRestaurant(uuid)
-  const authorIds = reviews
-    .map((r) => r.author_id?.trim())
-    .filter((id): id is string => Boolean(id))
-  const authorProfileMap = await buildAuthorProfileMap(authorIds)
-
-  const restaurantTaxonomy = [
-    ...normalizePalates(restaurant.palates),
-    ...normalizePalates(restaurant.cuisines),
-  ]
-
-  const overall = { sum: 0, count: 0 }
-  const authentic = { sum: 0, count: 0 }
-
-  for (const review of reviews) {
-    if (review.status !== 'approved') continue
-    const rating = Number(review.rating) || 0
-    if (rating <= 0) continue
-
-    overall.sum += rating
-    overall.count += 1
-
-    const authorKey = review.author_id?.trim().toLowerCase() ?? ''
-    const profilePalates = authorKey ? authorProfileMap.get(authorKey)?.palates : null
-    const authorPalates = extractReviewPalates(profilePalates)
-    const reviewerPalates =
-      authorPalates.length > 0 ? authorPalates : extractReviewPalates(review.palates)
-
-    if (restaurantTaxonomy.length > 0 && hasMatchingPalates(restaurantTaxonomy, reviewerPalates)) {
-      authentic.sum += rating
-      authentic.count += 1
-    }
+/**
+ * Recompute Overall + Authentic for one restaurant and persist them.
+ * Throws on query/write errors; returns null when the restaurant doesn't exist.
+ * Safe to call concurrently; upserts are idempotent.
+ */
+export async function rebuildRatingSummary(
+  restaurantUuid: string,
+): Promise<RatingSummaryRebuildResult | null> {
+  const computed = await computeRatingSummary(restaurantUuid)
+  if (!computed) {
+    console.warn('[rebuildRatingSummary] Restaurant not found:', restaurantUuid)
+    return null
   }
 
-  for (const review of externalReviewsResult.data?.restaurant_external_reviews ?? []) {
-    const rating = Number(review.rating) || 0
-    if (rating <= 0) continue
+  const { restaurant_uuid: uuid, restaurant_id: restaurantId, overall, authentic, cuisine_ids: cuisineIds } = computed
+  const versionTs = Math.floor(Date.now() / 1000)
+  const now = new Date().toISOString()
 
-    const reviewerPalates = (review.author_palates ?? [])
-      .map((slug) => String(slug).trim().toLowerCase())
-      .filter(Boolean)
-
-    if (restaurantTaxonomy.length > 0 && hasMatchingPalates(restaurantTaxonomy, reviewerPalates)) {
-      authentic.sum += rating
-      authentic.count += 1
-    }
-  }
-
-  applyGoogleRatingAggregate(overall, googleAggregate)
-
-  const overallAvg = overall.count > 0 ? overall.sum / overall.count : null
-  const overallWeighted = overallAvg !== null ? bayesianWeighted(overallAvg, overall.count) : null
-  const authenticAvg = authentic.count > 0 ? authentic.sum / authentic.count : null
-  const authenticWeighted =
-    authenticAvg !== null ? bayesianWeighted(authenticAvg, authentic.count) : null
-
-  try {
-    await hasuraAdmin(UPSERT_RATING_SUMMARY, {
-      object: {
-        restaurant_id: restaurant.id,
-        overall_review_count: overall.count,
-        overall_rating_sum: Number(overall.sum.toFixed(4)),
-        overall_rating_avg: overallAvg !== null ? Number(overallAvg.toFixed(4)) : null,
-        overall_rating_weighted: overallWeighted,
-        authentic_review_count: authentic.count,
-        authentic_rating_sum: Number(authentic.sum.toFixed(4)),
-        authentic_rating_avg: authenticAvg !== null ? Number(authenticAvg.toFixed(4)) : null,
-        authentic_rating_weighted: authenticWeighted,
-        review_version: Math.floor(Date.now() / 1000),
-        updated_at: new Date().toISOString(),
-      },
-    })
-  } catch (error) {
-    console.error('[rebuildRatingSummary] Upsert summary error:', error)
-  }
-
-  try {
-    await hasuraAdmin(UPDATE_RESTAURANT_RATING, {
-      uuid,
-      average_rating: overallAvg !== null ? Number(overallAvg.toFixed(4)) : null,
-      ratings_count: overall.count,
-    })
-  } catch (error) {
-    console.error('[rebuildRatingSummary] Update restaurant rating error:', error)
-  }
-
-  const cuisineIds = extractCuisineIds(restaurant.cuisines)
-  if (cuisineIds.length > 0) {
-    const versionTs = Math.floor(Date.now() / 1000)
-    const cuisineObjects = cuisineIds.map((cuisineId) => ({
-      restaurant_id: restaurant.id,
-      cuisine_id: cuisineId,
-      search_review_count: overall.count,
-      search_rating_sum: Number(overall.sum.toFixed(4)),
-      search_rating_avg: overallAvg !== null ? Number(overallAvg.toFixed(4)) : null,
-      search_rating_weighted: overallWeighted,
-      authentic_review_count: authentic.count,
-      authentic_rating_sum: Number(authentic.sum.toFixed(4)),
-      authentic_rating_avg: authenticAvg !== null ? Number(authenticAvg.toFixed(4)) : null,
-      authentic_rating_weighted: authenticWeighted,
+  await hasuraAdmin(UPSERT_RATING_SUMMARY, {
+    object: {
+      restaurant_id: restaurantId,
+      ...summaryColumns('overall', overall),
+      ...summaryColumns('authentic', authentic),
       review_version: versionTs,
-      updated_at: new Date().toISOString(),
-    }))
+      updated_at: now,
+    },
+  })
 
+  await hasuraAdmin(UPDATE_RESTAURANT_RATING, {
+    uuid,
+    average_rating: overall.display_avg,
+    ratings_count: overall.review_count,
+  })
+
+  if (cuisineIds.length > 0) {
     try {
-      await hasuraAdmin(UPSERT_CUISINE_RATING_SUMMARY, { objects: cuisineObjects })
+      await hasuraAdmin(UPSERT_CUISINE_RATING_SUMMARY, {
+        objects: cuisineIds.map((cuisineId) => ({
+          restaurant_id: restaurantId,
+          cuisine_id: cuisineId,
+          ...summaryColumns('search', overall),
+          ...summaryColumns('authentic', authentic),
+          review_version: versionTs,
+          updated_at: now,
+        })),
+      })
     } catch (error) {
       console.warn('[rebuildRatingSummary] Cuisine summary upsert error (non-fatal):', error)
     }
   }
 
-  schedulePalateRatingSummaryRebuild(uuid, 'first_party')
+  // Palate rows read the same pool; keep them in step with every Overall/Authentic rebuild.
+  schedulePalateRatingSummaryRebuildBoth(uuid)
+
+  return { restaurant_uuid: uuid, restaurant_id: restaurantId, overall, authentic }
 }
 
 /** Fire-and-forget rebuild — never throws to HTTP handlers. */

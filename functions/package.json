@@ -6,7 +6,8 @@
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "typecheck": "tsc --noEmit --watch"
+    "typecheck": "tsc --noEmit --watch",
+    "test": "vitest run"
   },
   "dependencies": {
     "busboy": "^1.6.0",
@@ -19,6 +20,7 @@
     "@types/express": "^5.0.0",
     "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^22.0.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.7"
   }
 }

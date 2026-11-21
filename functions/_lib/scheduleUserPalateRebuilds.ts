@@ -1,6 +1,6 @@
 import { hasuraQuery } from './hasura'
-import { schedulePalateRatingSummaryRebuild } from './rebuildPalateRatingSummary'
 import { scheduleRatingSummaryRebuild } from './rebuildRatingSummary'
+import { PUBLIC_REVIEW_STATUS_WHERE } from './reviewPool'
 
 const GET_REVIEWED_RESTAURANTS = `
   query GetReviewedRestaurantsForUser($authorId: uuid!) {
@@ -9,7 +9,7 @@ const GET_REVIEWED_RESTAURANTS = `
         author_id: { _eq: $authorId }
         deleted_at: { _is_null: true }
         parent_review_id: { _is_null: true }
-        status: { _eq: "approved" }
+        ${PUBLIC_REVIEW_STATUS_WHERE}
       }
       distinct_on: restaurant_uuid
     ) {
@@ -42,10 +42,8 @@ export function scheduleUserPalateRebuilds(userId: string): void {
         ),
       ]
 
-      for (const uuid of uuids) {
-        scheduleRatingSummaryRebuild(uuid)
-        schedulePalateRatingSummaryRebuild(uuid, 'first_party')
-      }
+      // Rebuilds Overall/Authentic and then both palate sources for each restaurant.
+      for (const uuid of uuids) scheduleRatingSummaryRebuild(uuid)
     } catch (error) {
       console.error('[scheduleUserPalateRebuilds] failed:', authorId, error)
     }

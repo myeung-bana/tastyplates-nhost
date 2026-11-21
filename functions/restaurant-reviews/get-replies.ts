@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express'
 import { hasuraQuery } from '../_lib/hasura'
+import { PUBLIC_REVIEW_STATUS_WHERE } from '../_lib/reviewPool'
 import {
   isValidUuid,
   REVIEW_AUTHOR_GRAPHQL_NESTED,
@@ -11,7 +12,7 @@ import { getHiddenUserIdsForRequest, withoutHiddenAuthors } from '../_lib/userBl
 const GET_REVIEW_REPLIES = `
   query GetReviewReplies($parentReviewId: uuid!, $limit: Int, $offset: Int) {
     restaurant_reviews(
-      where: { parent_review_id: { _eq: $parentReviewId } deleted_at: { _is_null: true } status: { _eq: "approved" } }
+      where: { parent_review_id: { _eq: $parentReviewId } deleted_at: { _is_null: true } ${PUBLIC_REVIEW_STATUS_WHERE} }
       order_by: { created_at: desc }
       limit: $limit offset: $offset
     ) {
@@ -19,7 +20,7 @@ const GET_REVIEW_REPLIES = `
       ${REVIEW_AUTHOR_GRAPHQL_NESTED}
     }
     restaurant_reviews_aggregate(
-      where: { parent_review_id: { _eq: $parentReviewId } deleted_at: { _is_null: true } status: { _eq: "approved" } }
+      where: { parent_review_id: { _eq: $parentReviewId } deleted_at: { _is_null: true } ${PUBLIC_REVIEW_STATUS_WHERE} }
     ) { aggregate { count } }
   }
 `

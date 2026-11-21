@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express'
 import { requireAuth, getUserId } from '../_lib/auth'
 import { hasuraQuery } from '../_lib/hasura'
+import { isPublicReviewStatus } from '../_lib/reviewPool'
 import {
   isValidUuid,
   REVIEW_AUTHOR_GRAPHQL_NESTED,
@@ -38,11 +39,11 @@ export default async (req: Request, res: Response): Promise<void> => {
     if (!reviewRaw) return fail(res, 'Review not found', 404)
 
     const isDeleted = Boolean(reviewRaw.deleted_at)
-    const isApproved = reviewRaw.status === 'approved'
+    const isPublic = isPublicReviewStatus(typeof reviewRaw.status === 'string' ? reviewRaw.status : null)
 
     if (isDeleted) return fail(res, 'Review not found', 404)
 
-    if (!isApproved) {
+    if (!isPublic) {
       const payload = await requireAuth(req, res)
       if (!payload) return
 

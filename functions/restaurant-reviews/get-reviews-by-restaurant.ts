@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express'
 import { hasuraQuery } from '../_lib/hasura'
+import { PUBLIC_REVIEW_STATUS_WHERE } from '../_lib/reviewPool'
 import {
   safeEnrichReviewRows,
   isValidUuid,
@@ -18,6 +19,7 @@ const REVIEW_WHERE = `
   restaurant_uuid: { _eq: $restaurantUuid }
   deleted_at: { _is_null: true }
   parent_review_id: { _is_null: true }
+  ${PUBLIC_REVIEW_STATUS_WHERE}
 `
 
 const GET_REVIEWS_ALL = `

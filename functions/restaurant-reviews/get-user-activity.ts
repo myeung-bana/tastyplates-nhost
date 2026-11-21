@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express'
 import { hasuraQuery } from '../_lib/hasura'
+import { PUBLIC_REVIEW_STATUS_WHERE } from '../_lib/reviewPool'
 import { resolveOptionalAuth } from '../_lib/auth-guard'
 import { getHiddenUserIds, isHidden } from '../_lib/userBlocks'
 import { listUserReviews } from '../_lib/list-user-reviews'
@@ -33,7 +34,7 @@ const GET_USER_COMMENTS = `
         author_id: { _eq: $authorId }
         deleted_at: { _is_null: true }
         parent_review_id: { _is_null: false }
-        status: { _eq: "approved" }
+        ${PUBLIC_REVIEW_STATUS_WHERE}
       }
       order_by: [{ created_at: desc }, { id: desc }]
       limit: $limit

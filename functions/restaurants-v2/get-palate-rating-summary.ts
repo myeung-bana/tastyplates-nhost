@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express'
+import { resolveAdminApiAuth } from '../_lib/admin-api-auth'
 import { getPalateRatingSummary } from '../_lib/palateRatingQueries'
 import { ok, fail } from '../_lib/respond'
 
@@ -6,6 +7,10 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 export default async (req: Request, res: Response): Promise<void> => {
   try {
+    // Admin-only diagnostics (Rating Model v3 §10.3): admin Bearer / MCP key / x-admin-secret.
+    const auth = await resolveAdminApiAuth(req, res)
+    if (!auth) return
+
     const url = new URL(req.url, 'http://localhost')
     const uuid = url.searchParams.get('restaurant_uuid')?.trim() ?? url.searchParams.get('uuid')?.trim()
     const palateSlug = url.searchParams.get('palate_slug')?.trim()

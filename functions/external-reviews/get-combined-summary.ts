@@ -1,8 +1,9 @@
 /**
  * GET `external-reviews/get-combined-summary`
- * Public — no auth required. Does not expose raw review body text.
+ * Admin only (admin Bearer / MCP key / x-admin-secret). Does not expose raw review body text.
  */
 import type { Request, Response } from 'express'
+import { resolveAdminApiAuth } from '../_lib/admin-api-auth'
 
 import { getCombinedSummary } from '../_lib/externalReviewCombined'
 import { UUID_REGEX } from '../_lib/externalReviewTypes'
@@ -10,6 +11,10 @@ import { fail, ok } from '../_lib/respond'
 
 export default async (req: Request, res: Response): Promise<void> => {
   try {
+    // Admin-only diagnostics (Rating Model v3 §10.3): admin Bearer / MCP key / x-admin-secret.
+    const auth = await resolveAdminApiAuth(req, res)
+    if (!auth) return
+
     if (req.method !== 'GET') {
       return fail(res, 'Method not allowed', 405)
     }
