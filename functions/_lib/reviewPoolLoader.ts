@@ -23,9 +23,10 @@ const GET_CUISINES = `
   }
 `
 
-const NATIVE_FIELDS = 'id restaurant_uuid rating status author_id palates deleted_at parent_review_id'
+const NATIVE_FIELDS =
+  'id restaurant_uuid rating status author_id palates deleted_at parent_review_id created_at'
 const SCRAPED_FIELDS =
-  'id restaurant_uuid rating is_flagged author_palates source_author_id source_author_name'
+  'id restaurant_uuid rating is_flagged author_palates source_author_id source_author_name reviewed_at ingested_at'
 
 // Status rule mirrors EXCLUDED_NATIVE_STATUSES; buildPoolEntries re-checks every row.
 const NATIVE_WHERE = `{

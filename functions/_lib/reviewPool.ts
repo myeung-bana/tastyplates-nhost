@@ -50,6 +50,8 @@ export type PoolEntry = {
   /** Distinct-reviewer key (author id, scraped author id/name, or review id). */
   reviewerKey: string
   identity: ReviewerIdentity
+  /** When the review was written (native created_at; scraped reviewed_at, else ingested_at). */
+  reviewedAt: string | null
 }
 
 export type NativeReviewRow = {
@@ -62,6 +64,7 @@ export type NativeReviewRow = {
   palates: unknown
   deleted_at?: string | null
   parent_review_id?: string | null
+  created_at?: string | null
 }
 
 export type ScrapedReviewRow = {
@@ -72,6 +75,8 @@ export type ScrapedReviewRow = {
   author_palates: unknown
   source_author_id?: string | null
   source_author_name?: string | null
+  reviewed_at?: string | null
+  ingested_at?: string | null
 }
 
 export type PoolScore = {
@@ -266,6 +271,7 @@ export function buildPoolEntries(input: {
       weight: NATIVE_WEIGHT,
       reviewerKey: authorKey ? `fp:${authorKey}` : `fp-review:${row.id}`,
       identity,
+      reviewedAt: row.created_at ?? null,
     })
   }
 
@@ -280,6 +286,7 @@ export function buildPoolEntries(input: {
       weight: SCRAPED_WEIGHT,
       reviewerKey: authorKey ? `ext:${authorKey}` : `ext-review:${row.id}`,
       identity: resolveReviewerIdentity(row.author_palates, input.taxonomy),
+      reviewedAt: row.reviewed_at ?? row.ingested_at ?? null,
     })
   }
 
