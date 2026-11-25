@@ -52,6 +52,8 @@ export type PoolEntry = {
   identity: ReviewerIdentity
   /** When the review was written (native created_at; scraped reviewed_at, else ingested_at). */
   reviewedAt: string | null
+  /** Source row id (`restaurant_reviews.id` or `restaurant_external_reviews.id`). */
+  reviewId?: string
 }
 
 export type NativeReviewRow = {
@@ -272,6 +274,7 @@ export function buildPoolEntries(input: {
       reviewerKey: authorKey ? `fp:${authorKey}` : `fp-review:${row.id}`,
       identity,
       reviewedAt: row.created_at ?? null,
+      reviewId: row.id,
     })
   }
 
@@ -287,6 +290,7 @@ export function buildPoolEntries(input: {
       reviewerKey: authorKey ? `ext:${authorKey}` : `ext-review:${row.id}`,
       identity: resolveReviewerIdentity(row.author_palates, input.taxonomy),
       reviewedAt: row.reviewed_at ?? row.ingested_at ?? null,
+      reviewId: row.id,
     })
   }
 
